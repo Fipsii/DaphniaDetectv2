@@ -1,5 +1,5 @@
 # Import required modules from the CollectedCode package
-from DaphDetector import NMS_Crop, NMS_detect, SegmentYOLODeploy, YOLODeploy, DataDict, ScaleDetect,LengthMeasure
+from DetectorCode import NMS_Crop, NMS_detect, SegmentYOLODeploy, YOLODeploy, DataDict, ScaleDetect,LengthMeasure
 import os
 import json
 import pandas as pd
