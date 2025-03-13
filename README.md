@@ -7,4 +7,4 @@ You can also find docker images [here](https://hub.docker.com/repository/docker/
 
 ![image](https://github.com/Fipsii/DaphniaDetector/blob/main/Zeichnung4.png?raw=true)
 
-In this github you can find instruction for use and installation on your system either through Docker (Docker) or without (Base). 
+
