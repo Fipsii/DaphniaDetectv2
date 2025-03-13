@@ -1,6 +1,6 @@
 ## Data Structure
 
-#### Model  
+### Model  
 
 YOLO models for Classifying, Detecting and Segmentation
 
@@ -19,7 +19,7 @@ Step by Step guide here
 
 ```
 
-#### Requirements.yml 
+### Requirements.yml 
 
 Installation file of the conda enviornment using the command:
 
