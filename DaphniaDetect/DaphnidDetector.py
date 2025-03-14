@@ -11,9 +11,9 @@ import pandas as pd
 OutputDir: str = "PATH/TO/DATA/"
 
 # Paths to trained YOLO model weights
-Bbox: str = "PATH/TO/DATA/DaphniaDetect/detect/weights/best.pt"  # Model for bounding box detection
-Segment: str = "PATH/TO/DATA/DaphniaDetect/segment/weights/best.pt"  # Model for segmentation
-Classify: str = "PATH/TO/DATA//DaphniaDetect/classify/weights/best.pt"  # Model for classification
+Bbox: str = "PATH/TO/DATA/model/DaphniaDetect/detect/weights/best.pt"  # Model for bounding box detection
+Segment: str = "PATH/TO/DATA/modelDaphniaDetect/segment/weights/best.pt"  # Model for segmentation
+Classify: str = "PATH/TO/DATA/model/DaphniaDetect/classify/weights/best.pt"  # Model for classification
 
 # Directory containing input images
 ImageDir: str = "PATH/TO/DATA/"
