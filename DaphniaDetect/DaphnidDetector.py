@@ -134,7 +134,7 @@ Measurements: dict = LengthMeasure.MeasureLength(test)
 # Parameters:
 # - test (dict): Dictionary containing measurement results
 # - Scale (dataframe): Dataframe with conversion factor
-# Returns
+# Returns:
 # - (pd.dataframe): dataframe with mm measurements (also saved under outputdir/scaled_measurements.csv)
 Measurements = pd.DataFrame.from_dict(Measurements,orient='index')
 
