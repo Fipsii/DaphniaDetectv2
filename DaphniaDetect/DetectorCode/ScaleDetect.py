@@ -167,7 +167,7 @@ def getLineLength(Image_names):
             cv2.line(line_image2,(x1,y1),(x2,y2),(255,0,0),1)
         
         test2 = cv2.addWeighted(img, 0.2, line_image2, 0.8, 0)
-        #plt.imsave(f"/home/philipp/Scale_Values_combined/Simona/Image_test1_{x}.jpg",arr = test, dpi = 600)
+       
     
         
         ## Result Area
