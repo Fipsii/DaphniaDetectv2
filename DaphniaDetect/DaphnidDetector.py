@@ -60,7 +60,7 @@ for file in os.listdir(label_dir):
 # - Vis (bool): Whether to visualize segmentation results
 # Returns:
 # - (folder): folder in outputdir with segmentation results sepcified
-SegmentYOLODeploy.Segment_Exp(ImageDir, OutputDir, Vis=True)
+SegmentYOLODeploy.Segment_Exp(ImageDir, OutputDir,ModelPath, Vis=True)
 
 # ======================================
 # STEP 4: CLASSIFY SPECIES
