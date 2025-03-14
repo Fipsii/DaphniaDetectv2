@@ -831,7 +831,7 @@ def WidthRabus(ImageFolder, OutputFolder):
   #print(test)
   Image_Rotation(test)
   Midpoints = Detect_Midpoint(test)
-  Width = Measure_Width_Rabus(Midpoints, "/home/philipp/vis_rabus")
+  Width = Measure_Width_Rabus(Midpoints, OutputFolder)
   Values_To_Be_Drawn = Create_Visualization_Data(Width)
   
   return(Values_To_Be_Drawn)
