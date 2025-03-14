@@ -5,12 +5,12 @@ import numpy as np
 from ultralytics import YOLO
 
 # Load the YOLOv8 segmentation model
-model = YOLO("/home/philipp/runs/segment/train24/weights/best.pt")  # Change to your model file
+model = YOLO(OutputFolder)  # Change to your model file
 
 # Paths
-input_images_folder = "/home/philipp/Image_repository/Marvin_fish_bile/few/"  # Folder with images to predict
-output_images_folder = "/home/philipp/SegmentationPredictLabels2/images"
-output_labels_folder = "/home/philipp/SegmentationPredictLabels2/labels"
+input_images_folder =  # Folder with images to predict
+output_images_folder = 
+output_labels_folder = 
 
 # Create output directories if they don’t exist
 os.makedirs(output_images_folder, exist_ok=True)
