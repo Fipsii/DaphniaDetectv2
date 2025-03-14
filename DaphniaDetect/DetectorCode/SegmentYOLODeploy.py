@@ -7,7 +7,6 @@ from ultralytics import YOLO
 def Segment(ImageDir, OutputDir, ModelPath, Vis=True):
     
     # Load the YOLOv11 segmentation model
-    # Or 26?
     model = YOLO(ModelPath) 
     
     # Run inference on all images first
