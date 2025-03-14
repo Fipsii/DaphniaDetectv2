@@ -4,11 +4,11 @@ import torch
 import numpy as np
 from ultralytics import YOLO
 
-def Segment(ImageDir, OutputDir, Vis=True):
+def Segment(ImageDir, OutputDir, ModelPath, Vis=True):
     
     # Load the YOLOv11 segmentation model
     # Or 26?
-    model = YOLO("/home/philipp/runs/segment/train27/weights/best.pt") 
+    model = YOLO(ModelPath) 
     
     # Run inference on all images first
     results = model(ImageDir, imgsz=1280, save_txt = True,project=OutputDir, name="Segmentation", save = Vis, iou = 0.1, verbose=False)
@@ -27,7 +27,7 @@ import torch
 from ultralytics import YOLO
 import numpy as np
 
-def Segment_Exp(ImageDir, OutputDir, Vis=True):
+def Segment_Exp(ImageDir, OutputDir,ModelPath, Vis=True):
     """
     Run segmentation on images using YOLOv11 (or another variant).
     Saves the segmentation results to the OutputDir.
@@ -37,7 +37,7 @@ def Segment_Exp(ImageDir, OutputDir, Vis=True):
     :param Vis: Boolean to save visualized outputs.
     """
     # Load the YOLOv11 segmentation model
-    model = YOLO("/home/philipp/runs/segment/train27/weights/best.pt")
+    model = YOLO(ModelPath)
 
     # Run inference on all images first
     results = model(ImageDir, imgsz=1280, save_txt=True, project=OutputDir, 
