@@ -7,16 +7,31 @@ import pandas as pd
 # CONFIGURATION & PARAMETERS
 # ==========================
 
+import os
+
+# Get the directory where the script is located
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
 # Output directory for storing results
-OutputDir: str = "PATH/TO/DATA/"
+OutputDir: str = script_dir
 
 # Paths to trained YOLO model weights
-Bbox: str = "PATH/TO/DATA/model/DaphniaDetect/detect/weights/best.pt"  # Model for bounding box detection
-Segment: str = "PATH/TO/DATA/modelDaphniaDetect/segment/weights/best.pt"  # Model for segmentation
-Classify: str = "PATH/TO/DATA/model/DaphniaDetect/classify/weights/best.pt"  # Model for classification
+Bbox: str = os.path.join(script_dir, "model/DaphniaDetect/detect/weights/best.pt")  # Model for bounding box detection
+Segment: str = os.path.join(script_dir, "model/DaphniaDetect/segment/weights/best.pt")  # Model for segmentation
+Classify: str = os.path.join(script_dir, "model/DaphniaDetect/classify/weights/best.pt")  # Model for classification
 
 # Directory containing input images
-ImageDir: str = "PATH/TO/DATA/"
+ImageDir: str = None
+
+# If no folder was selected request a path
+if not input_images_folder or not os.path.exists(input_images_folder):
+    input_images_folder = input("Please enter the path to the image folder: ").strip()
+    while not os.path.exists(input_images_folder):
+        print("Invalid path. Please try again.")
+        input_images_folder = input("Please enter the path to the image folder: ").strip()
+
+if script_dir == os.path.dirname(os.path.abspath(__file__)):
+    print(f"No save location specified saving results to {script_dir}")
 
 # ======================================
 # STEP 1: DETECT ORGANS IN THE IMAGES
