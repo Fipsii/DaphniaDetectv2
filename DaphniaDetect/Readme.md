@@ -19,10 +19,17 @@ Step by Step guide here
 
 ```
 
-### Requirements.yml 
+### Install requirements
 
-Installation file of the conda enviornment using the command:
-
+Either use the  environment.yml for a conda installation
 ```
 conda env create -f /path/to/environment.yml
+```
+
+OR
+
+Install into without conda using the requirments.txt
+
+```
+python3 -m pip install -r requirements.txt
 ```
