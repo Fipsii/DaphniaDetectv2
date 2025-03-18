@@ -1,5 +1,5 @@
 # Import required modules from the CollectedCode package
-from DetectorCode import NMS_Crop, NMS_detect, SegmentYOLODeploy, YOLODeploy, DataDict, ScaleDetect,LengthMeasure
+from DetectorCode import NMS_Crop, NMS_detect, SegmentYOLODeploy, YOLODeploy, DataDict, ScaleDetect,LengthMeasure, ConvertToJPG
 import os
 import json
 import pandas as pd
@@ -33,13 +33,23 @@ if not ImageDir or not os.path.exists(ImageDir):
 if script_dir == os.path.dirname(os.path.abspath(__file__)):
     print(f"No save location specified saving results to {script_dir}")
 
+
+# ======================================
+# STEP 0.5: DETECT ORGANS IN THE IMAGES
+# ======================================
+## If Data is not JPG convert ##
+
+
+if ConvertToJPG.Check_JPG(ImageDir) = False:
+    ConvertToJPG.ConverToJPEG(ImageDir, ImageDir + "/JPG")
+    ImageDir = ImageDir +"/JPG"
+
+
+
 # ======================================
 # STEP 1: DETECT ORGANS IN THE IMAGES
 # ======================================
 ## DaphniaDetector missing scale
-
-
-
 
 # Detect organs using the YOLO object detection model
 # Parameters:
