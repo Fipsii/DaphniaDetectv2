@@ -1,5 +1,7 @@
 ##### Convert all non jpg to jpg, Ignores files that cant be made to jpg. 
 
+import os
+
 def CheckJPG(image_dir):
     """Check if all images in a directory are already JPEGs."""
     valid_extensions = {".jpg", ".jpeg"}
