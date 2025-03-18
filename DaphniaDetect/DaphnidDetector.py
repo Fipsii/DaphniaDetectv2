@@ -16,19 +16,19 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 OutputDir: str = script_dir
 
 # Paths to trained YOLO model weights
-Bbox: str = os.path.join(script_dir, "model/DaphniaDetect/detect/weights/best.pt")  # Model for bounding box detection
-Segment: str = os.path.join(script_dir, "model/DaphniaDetect/segment/weights/best.pt")  # Model for segmentation
-Classify: str = os.path.join(script_dir, "model/DaphniaDetect/classify/weights/best.pt")  # Model for classification
+Bbox: str = os.path.join(script_dir, "Model/detect/weights/best.pt")  # Model for bounding box detection
+Segment: str = os.path.join(script_dir, "Model/segment/weights/best.pt")  # Model for segmentation
+Classify: str = os.path.join(script_dir, "Model/classify/weights/best.pt")  # Model for classification
 
 # Directory containing input images
 ImageDir: str = None
 
 # If no folder was selected request a path
-if not input_images_folder or not os.path.exists(input_images_folder):
-    input_images_folder = input("Please enter the path to the image folder: ").strip()
-    while not os.path.exists(input_images_folder):
+if not ImageDir or not os.path.exists(ImageDir):
+    ImageDir = input("Please enter the path to the image folder: ").strip()
+    while not os.path.exists(ImageDir):
         print("Invalid path. Please try again.")
-        input_images_folder = input("Please enter the path to the image folder: ").strip()
+        ImageDir = input("Please enter the path to the image folder: ").strip()
 
 if script_dir == os.path.dirname(os.path.abspath(__file__)):
     print(f"No save location specified saving results to {script_dir}")
@@ -49,7 +49,11 @@ if script_dir == os.path.dirname(os.path.abspath(__file__)):
 # - NMS (bool): Whether to apply Non-Maximum Suppression (NMS)
 # - crop (bool): Whether to crop detected regions
 # - ModelPath (str): Path to the trained YOLO model for detection
-NMS_detect.DetectOrgans(ImageDir, OutputDir, vis=True, NMS=True, crop=True, ModelPath=Bbox)
+
+
+# _ Crop still has an error -> 
+print(Bbox)
+NMS_detect.DetectOrgans(ImageDir, OutputDir, vis=True, NMS=True, crop=False, ModelPath=Bbox)
 
 # ======================================
 # STEP 2: UPDATE BODY BOUNDING BOXES
@@ -75,7 +79,7 @@ for file in os.listdir(label_dir):
 # - Vis (bool): Whether to visualize segmentation results
 # Returns:
 # - (folder): folder in outputdir with segmentation results sepcified
-SegmentYOLODeploy.Segment_Exp(ImageDir, OutputDir,ModelPath, Vis=True)
+SegmentYOLODeploy.Segment_Exp(ImageDir, OutputDir,ModelPath = Segment, Vis=True)
 
 # ======================================
 # STEP 4: CLASSIFY SPECIES
@@ -101,7 +105,7 @@ SegmentYOLODeploy.Segment_Exp(ImageDir, OutputDir,ModelPath, Vis=True)
 # Returns:
 # - (dict): Dictionary containing measurement results
 test: dict = DataDict.WidthImhof(ImageDir, OutputDir)
-
+print(test)
 # Alternative method: Measure width using Rabus method
 # test = DataDict.WidthRabus(ImageDir, OutputDir)
 
@@ -129,6 +133,7 @@ DataDict.visualize_and_save(test, os.path.join(OutputDir, "visualization"))
 # - (pd.dataframe): dataframe with scale values (also saved under outputdir/scales.csv)
 
 Scales = ScaleDetect.DetectScale(test,Scale_detector_mode=0,Conv_factor=0)
+print(Scales)
 Scales.to_csv(OutputDir + "/scale.csv", index = False)      
 
 
@@ -152,8 +157,9 @@ Measurements: dict = LengthMeasure.MeasureLength(test)
 # Returns:
 # - (pd.dataframe): dataframe with mm measurements (also saved under outputdir/scaled_measurements.csv)
 Measurements = pd.DataFrame.from_dict(Measurements,orient='index')
-
+print(Measurements)
 # Merge the data bassed on the image name
+
 merged_df = pd.merge(Measurements, Scales, on="image_name", how="inner") 
 Measurements.to_csv(f"{OutputDir}/data.csv")
 
