@@ -44,11 +44,13 @@ def process_image_folder(InputDir, OutputDir):
     image_dir = InputDir
     segmentation_dir = os.path.join(OutputDir, "Segmentation", "labels")
     detection_dir = os.path.join(OutputDir, "Detection", "labels")
-
+    
     results = {}
 
     for image_file in os.listdir(image_dir):
-        if image_file.endswith((".jpg", ".png")):
+        print(image_file)
+        if image_file.endswith((".jpg",".jpeg", ".png")):
+         
             image_name = os.path.splitext(image_file)[0]
             image_path = os.path.join(image_dir, image_file)
 
@@ -57,16 +59,17 @@ def process_image_folder(InputDir, OutputDir):
 
             if image is None:
                 continue
+            
             image_shape = image.shape  # (height, width, channels)
 
             # Load YOLO annotations
             segmentation_path = os.path.join(segmentation_dir, f"{image_name}.txt")
             detection_path = os.path.join(detection_dir, f"{image_name}.txt")
-
+		
             # Handle missing or empty annotations
             segmentation_masks = load_yolo_annotations(segmentation_path) or []
             bounding_boxes = load_yolo_annotations(detection_path) or []
-
+            print(bounding_boxes,segmentation_masks)
             # **Remove the first value from segmentation if present**
             if segmentation_masks and isinstance(segmentation_masks[0], list) and segmentation_masks[0][0] == 0:
                 segmentation_masks = [seg[1:] for seg in segmentation_masks]  # Remove first value from each mask
@@ -91,7 +94,7 @@ def process_image_folder(InputDir, OutputDir):
                 # Fill the polygon area with white (255) on the black image
                 cv2.fillPoly(black_image, [largest_mask], (255))  # 255 for white color (single channel)
                         # Initialize the dictionary for this image
-                        
+            print(black_image, "Whats up")
             results[image_file] = {
                 "image_name": image_name,
                 "image_path": image_path,
@@ -135,7 +138,7 @@ def process_image_folder(InputDir, OutputDir):
             output_image_path = os.path.join(OutputDir, "Processed_Images", f"{image_name}_processed.png")
             os.makedirs(os.path.dirname(output_image_path), exist_ok=True)
             cv2.imwrite(output_image_path, black_image)
-
+    print(results)
     return results
 
 def load_yolo_annotations(file_path):
@@ -340,6 +343,7 @@ def Image_Rotation(test_dict, visualize=False):
 
             plt.show()
 
+	
 def drawAxis(img, p_, q_, color, scale):
   
   from math import atan2, cos, sin, sqrt, pi
@@ -798,20 +802,24 @@ def Calculate_Width_At_Midpoint(data_dict):
 
 def WidthImhof(ImageFolder, OutputFolder):
   # Example usage
+  print(ImageFolder, "Used_Folder")
   test = process_image_folder(ImageFolder,OutputFolder)
+  print(test,OutputFolder)
   #print(test)
   mask_dir = Path(OutputFolder) / 'Segmentation' / 'mask'
   
   Image_Rotation(test)
+  print(test)
   Midpoints = Detect_Midpoint(test)
+  print(Midpoints, "Midpoints")
   Width = Measure_Width_Imhof(Midpoints)
-  
+  print(Width, "Midpoints")
   ## Do this for non org images
   
   
   ## This for org images
   Values_To_Be_Drawn = Create_Visualization_Data(Width)
-
+	
   data = pd.DataFrame.from_dict(Values_To_Be_Drawn,orient='index')
   
   data.to_csv(f"{OutputFolder}/data.csv")
