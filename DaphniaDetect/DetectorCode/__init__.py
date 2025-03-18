@@ -5,3 +5,4 @@ from .YOLODeploy import *
 from .DataDict import *
 from .ScaleDetect import *
 from .LengthMeasure import *
+from .ConvertToJPG import *
