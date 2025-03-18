@@ -1,5 +1,15 @@
 ##### Convert all non jpg to jpg, Ignores files that cant be made to jpg. 
 
+def CheckJPG(image_dir):
+    """Check if all images in a directory are already JPEGs."""
+    valid_extensions = {".jpg", ".jpeg"}
+    for filename in os.listdir(image_dir):
+        if os.path.isfile(os.path.join(image_dir, filename)):
+            ext = os.path.splitext(filename)[1].lower()
+            if ext not in valid_extensions:
+                return False  # Found a non-JPEG file
+    return True  # All images are JPEGs
+  
 def ConvertToJPEG(directory, save_loc):
   import os as os
   from PIL import Image
