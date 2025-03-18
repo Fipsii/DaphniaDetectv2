@@ -406,7 +406,7 @@ def makeDfwithfactors(list_of_names, Scale_Mode,List_of_scale_numbers=[], list_o
   ### Then we enter the singular or mutliple values into the df
   
   import pandas as pd
-  
+  list_of_names = [name + ".jpg" for name in list_of_names]
   if Scale_Mode == 0:
     print(f"Using manual factor of {ConvFactor} px/mm")
     
@@ -466,7 +466,7 @@ def DetectScale(DataDict,Scale_detector_mode=0,Conv_factor=0):
       Line_Coors = [] 
   
   ## Should all work until here
-  ScaleDataframe = makeDfwithfactors(Name_of_Images,Scale_detector_mode,Numbers,Lengths,Conv_factor)
+  ScaleDataframe = makeDfwithfactors(Name_of_Images,Scale_detector_mode,Numbers,Lengths,Line_Coors,Conv_factor)
   
   return ScaleDataframe
 

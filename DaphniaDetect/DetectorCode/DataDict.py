@@ -847,19 +847,18 @@ def WidthRabus(ImageFolder, OutputFolder):
 ## thats it
 import os
 import cv2
+import ast
+import matplotlib.pyplot as plt
 
-def visualize_and_save(data_dict, output_folder):
+def visualize_and_save(data_dict, output_folder, scale_mode):
     """
     Draws lines between Eye → Spina Base and Spina Tip → Spina Base, along with width measurements.
-    Saves the annotated images in the specified output folder.
+    Also visualizes scale if available. Saves the annotated images in the specified output folder.
 
     Parameters:
         data_dict (dict): Dictionary containing image annotations.
         output_folder (str): Path to the folder where visualized images will be saved.
     """
-    
-    """ Width values are funky """
-    # Ensure output folder exists
     os.makedirs(output_folder, exist_ok=True)
 
     # Define colors
@@ -867,10 +866,8 @@ def visualize_and_save(data_dict, output_folder):
     dot_color = (0, 0, 0)  # Black for endpoints
     width_color = (0, 255, 0)  # Green for width line
 
-    # Iterate over dictionary entries
-    for image, annotations in data_dict.items():
 
-        # Load image
+    for image, annotations in data_dict.items():
         image_path = annotations.get("image_path")
         if not image_path or not os.path.exists(image_path):
             print(f"Warning: Image not found for {image}")
@@ -881,15 +878,13 @@ def visualize_and_save(data_dict, output_folder):
             print(f"Error loading image: {image_path}")
             continue
 
-        img_height, img_width = img.shape[:2]  # Get image dimensions
-
-        # Extract keypoints in pixel coordinates
+        img_height, img_width = img.shape[:2]
         keypoints = {}
         for key in ["Eye", "Spina base", "Spina tip"]:
             if key in annotations.get("bboxes", {}):
                 box = annotations["bboxes"][key][0]  # Assuming one box per key
                 x_center, y_center = box["x_center"], box["y_center"]
-                keypoints[key] = (int(x_center), int(y_center))  # Already in pixels
+                keypoints[key] = (int(x_center), int(y_center))
 
         # Draw lines between keypoints
         connections = [("Eye", "Spina base"), ("Spina tip", "Spina base")]
@@ -900,22 +895,77 @@ def visualize_and_save(data_dict, output_folder):
                 cv2.circle(img, keypoints[pt2], 5, dot_color, -1)
 
         try:
-          x1 = int(annotations.get("Width_Y1"))
-          y1 = int(annotations.get("Width_X1"))
-          x2 = int(annotations.get("Width_Y2"))
-          y2 = int(annotations.get("Width_X2"))
-  
-          # Draw width line
-          cv2.line(img, (x1, y1), (x2, y2), width_color, 2, cv2.LINE_AA)
-          cv2.circle(img, (x1, y1), 5, dot_color, -1)
-          cv2.circle(img, (x2, y2), 5, dot_color, -1)
+            x1 = int(annotations.get("Width_Y1"))
+            y1 = int(annotations.get("Width_X1"))
+            x2 = int(annotations.get("Width_Y2"))
+            y2 = int(annotations.get("Width_X2"))
+    
+            # Draw width line
+            cv2.line(img, (x1, y1), (x2, y2), width_color, 2, cv2.LINE_AA)
+            cv2.circle(img, (x1, y1), 5, dot_color, -1)
+            cv2.circle(img, (x2, y2), 5, dot_color, -1)
         except:
-          print(f"no measurement for {image}")
+            print(f"No measurement for {image}")
+
+
+
+        try:
+            if scale_mode == 0:
+               print("Scale given manually; no calculation possible")
+
+            elif scale_mode != 0:
+               print(annotations["coordinates_scale"])
+               Coordinates = annotations["coordinates_scale"]
+
+               X1, X2, Y = Coordinates[0][0], Coordinates[0][2], Coordinates[0][3]
+               print(X1, X2, Y)
+
+               # Draw a solid horizontal line
+               cv2.line(img, (X1, Y - 50), (X2, Y - 50), (0, 255, 0), 1)  # Green, thickness=1
+
+               # Simulate dashed vertical lines by drawing short segments
+               for i in range(Y - 50, Y, 10):  # Step size 10 for dashes
+                  cv2.line(img, (X1, i), (X1, i + 5), (0, 255, 0), 1)  # Left dashed line
+                  cv2.line(img, (X2, i), (X2, i + 5), (0, 255, 0), 1)  # Right dashed line
+
+               # Calculate font size dynamically
+               font_size = max(0.5, min(img.shape[1], img.shape[0]) / 800)
+
+               # Draw the scale text
+               text = f"{annotations['metric_length']} mm"
+
+               # Get text size
+               (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_size, 2)
+
+               # Calculate centered position
+               text_x = X1 + (X2 - X1 - text_width) // 2
+               text_y = Y - 75  # Keep the vertical position the same
+
+               text_position = (text_x, text_y)
+
+               cv2.putText(img, text, text_position, cv2.FONT_HERSHEY_SIMPLEX,
+               font_size, (0, 255, 0), 2, cv2.LINE_AA)
+
+        except Exception as e:
+
+             if img is not None:
+                  print(f"Image shape: {img.shape}")  # Debugging info
+
+                  # Calculate font size for error text
+                  font_size = max(0.5, min(img.shape[1], img.shape[0]) / 800)
+
+                  # Draw error text
+                  cv2.putText(img, "No scale or number detected",
+                    (int(img.shape[1] * 0.75), int(img.shape[0] / 1.2)),
+                    cv2.FONT_HERSHEY_SIMPLEX, font_size, (0, 255, 0), 2, cv2.LINE_AA)
+             else:
+                  print("Warning: img is None")
 
 
         # Save the visualized image
         output_path = os.path.join(output_folder, image)
         cv2.imwrite(output_path, img)
         print(f"Saved at {output_path}")
+
         
 
