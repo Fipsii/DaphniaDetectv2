@@ -41,7 +41,7 @@ if script_dir == os.path.dirname(os.path.abspath(__file__)):
 
 
 if ConvertToJPG.CheckJPG(ImageDir) == False:
-    ConvertToJPG.ConverToJPEG(ImageDir, ImageDir + "/JPG")
+    ConvertToJPG.ConvertToJPEG(ImageDir, ImageDir + "/JPG")
     ImageDir = ImageDir +"/JPG"
 
 
