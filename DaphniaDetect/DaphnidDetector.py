@@ -40,7 +40,7 @@ if script_dir == os.path.dirname(os.path.abspath(__file__)):
 ## If Data is not JPG convert ##
 
 
-if ConvertToJPG.Check_JPG(ImageDir) = False:
+if ConvertToJPG.Check_JPG(ImageDir) == False:
     ConvertToJPG.ConverToJPEG(ImageDir, ImageDir + "/JPG")
     ImageDir = ImageDir +"/JPG"
 
