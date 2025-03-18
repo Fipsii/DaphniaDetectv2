@@ -453,11 +453,11 @@ def DetectScale(DataDict,Scale_detector_mode=0,Conv_factor=0):
   
   if Scale_detector_mode != 0:
       
-      Lengths, Line_Coors, List_of_images = ScaleDetect.getLineLength(Paths_of_Images)  ### Line lengths and lower right apart of image
-      Rough_Images = ScaleDetect.RoughCrop(Line_Coors, List_of_images)                  ### Makes one number or list out of list(list(n,n1,n2), list(n,n1,n2),...)
-      Small_Images = ScaleDetect.CropImage(Rough_Images)
-      Detected_Numbers = ScaleDetect.detect_Number(Small_Images)
-      Numbers = ScaleDetect.Sortlist(Detected_Numbers)
+      Lengths, Line_Coors, List_of_images = getLineLength(Paths_of_Images)  ### Line lengths and lower right apart of image
+      Rough_Images = RoughCrop(Line_Coors, List_of_images)                  ### Makes one number or list out of list(list(n,n1,n2), list(n,n1,n2),...)
+      Small_Images = CropImage(Rough_Images)
+      Detected_Numbers = detect_Number(Small_Images)
+      Numbers = Sortlist(Detected_Numbers)
   
   else:
        ## Set an empty list to prevent, which is a dummy for scale mode 0
