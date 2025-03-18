@@ -13,7 +13,7 @@ import os
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Output directory for storing results
-OutputDir: str = script_dir
+OutputDir: str = script_dir + "/Detector"
 
 # Paths to trained YOLO model weights
 Bbox: str = os.path.join(script_dir, "Model/detect/weights/best.pt")  # Model for bounding box detection
