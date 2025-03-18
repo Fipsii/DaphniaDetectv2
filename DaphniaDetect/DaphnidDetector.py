@@ -102,7 +102,7 @@ SegmentYOLODeploy.Segment_Exp(ImageDir, OutputDir,ModelPath = Segment, Vis=True)
 # Returns:
 # - (dict): Dictionary mapping image names to classified species
 
-#species: dict = YOLODeploy.Classify_Species(ImageDir, Classify)
+species: dict = YOLODeploy.Classify_Species(ImageDir, Classify)
 
 # ======================================
 # STEP 5: MEASUREMENTS
@@ -119,20 +119,9 @@ print(test)
 # Alternative method: Measure width using Rabus method
 # test = DataDict.WidthRabus(ImageDir, OutputDir)
 
-# ======================================
-# STEP 6: VISUALIZE RESULTS
-# ======================================
-
-# Visualize and save measurement results
-# Parameters:
-# - test (dict): Dictionary containing measurement results
-# - output_path (str): Path to save visualized images
-# Returns:
-# - (images): Images saved in OutputDir/visualization
-DataDict.visualize_and_save(test, os.path.join(OutputDir, "visualization"))
 
 # ======================================
-# STEP 7: GET SCALE VALUES
+# STEP 6: GET SCALE VALUES
 # ======================================
 
 # Visualize and save measurement results
@@ -142,10 +131,30 @@ DataDict.visualize_and_save(test, os.path.join(OutputDir, "visualization"))
 # Returns:
 # - (pd.dataframe): dataframe with scale values (also saved under outputdir/scales.csv)
 
-Scales = ScaleDetect.DetectScale(test,Scale_detector_mode=0,Conv_factor=0)
+Scale_detector_mode = 2
+Scales = ScaleDetect.DetectScale(test,Scale_detector_mode,Conv_factor=0)
 print(Scales)
 Scales.to_csv(OutputDir + "/scale.csv", index = False)      
 
+## Add scale values to dict by image_name then we do not need to merge later
+
+scales_dict = Scales.set_index("image_name").to_dict(orient="index")
+
+combined_dict = {}
+for key in set(scales_dict) | set(test):  # Union of keys
+    combined_dict[key] = {**scales_dict.get(key, {}), **test.get(key, {})}
+    
+# ======================================
+# STEP 7: VISUALIZE RESULTS
+# ======================================
+
+# Visualize and save measurement results
+# Parameters:
+# - test (dict): Dictionary containing measurement results
+# - output_path (str): Path to save visualized images
+# Returns:
+# - (images): Images saved in OutputDir/visualization
+DataDict.visualize_and_save(combined_dict, os.path.join(OutputDir, "visualization"), Scale_detector_mode)
 
 # ======================================
 # STEP 8: MEASURE LENGTH
@@ -154,7 +163,7 @@ Scales.to_csv(OutputDir + "/scale.csv", index = False)
 # - test (dict): Dictionary containing measurement results
 # Returns:
 # - test (dict): Dictionary containing measurement results with length measurements
-Measurements: dict = LengthMeasure.MeasureLength(test)
+Measurements: dict = LengthMeasure.MeasureLength(combined_dict)
 
 
 # ======================================
