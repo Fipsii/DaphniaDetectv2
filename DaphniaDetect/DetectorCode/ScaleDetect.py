@@ -432,7 +432,7 @@ def makeDfwithfactors(list_of_names, Scale_Mode,List_of_scale_numbers=[], list_o
   ## scales. This allows the user to see the stability of detection, but
   ## could cause confusion if looking at results.
   
-  Scale_df = pd.DataFrame(list_of_names, columns =['Name'])
+  Scale_df = pd.DataFrame(list_of_names, columns =['image_name'])
 
   Scale_df["metric_length"] = UnitOpt
   Scale_df["scale[px]"] = LengthOpt
