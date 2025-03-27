@@ -22,7 +22,7 @@ Classify: str = os.path.join(script_dir, "Model/classify/weights/best.pt")  # Mo
 
 # Directory containing input images
 ImageDir: str = None
-
+ImageDir = "/home/fipsi/Downloads/Induced.tif"
 # If no folder was selected request a path
 if not ImageDir or not os.path.exists(ImageDir):
     ImageDir = input("Please enter the path to the image folder: ").strip()
@@ -63,7 +63,7 @@ if ConvertToJPG.CheckJPG(ImageDir) == False:
 
 # _ Crop still has an error -> 
 print(Bbox)
-NMS_detect.DetectOrgans(ImageDir, OutputDir, vis=True, NMS=True, crop=False, ModelPath=Bbox)
+NMS_detect.DetectOrgans(ImageDir, OutputDir, vis=True, NMS=True, crop=True,organs = ["Heart", "Eye"], ModelPath=Bbox)
 
 # ======================================
 # STEP 2: UPDATE BODY BOUNDING BOXES
@@ -79,7 +79,7 @@ for file in os.listdir(label_dir):
     NMS_detect.update_daphnid_bounding_boxes(label_path)
 
 # ======================================
-# STEP 3: SEGMENTATION OF ORGANS
+# STEP 3: SEGMENTATION
 # ======================================
 
 # Apply segmentation model to detected objects
@@ -114,8 +114,8 @@ species: dict = YOLODeploy.Classify_Species(ImageDir, Classify)
 # - OutputDir (str): Directory to save measurement results
 # Returns:
 # - (dict): Dictionary containing measurement results
-test: dict = DataDict.WidthImhof(ImageDir, OutputDir)
-print(test)
+test: dict = DataDict.WidthSperfeld(ImageDir, OutputDir)
+
 # Alternative method: Measure width using Rabus method
 # test = DataDict.WidthRabus(ImageDir, OutputDir)
 
@@ -133,7 +133,7 @@ print(test)
 
 Scale_detector_mode = 2
 Scales = ScaleDetect.DetectScale(test,Scale_detector_mode,Conv_factor=0)
-print(Scales)
+
 Scales.to_csv(OutputDir + "/scale.csv", index = False)      
 
 ## Add scale values to dict by image_name then we do not need to merge later
@@ -176,7 +176,7 @@ Measurements: dict = LengthMeasure.MeasureLength(combined_dict)
 # Returns:
 # - (pd.dataframe): dataframe with mm measurements (also saved under outputdir/scaled_measurements.csv)
 Measurements = pd.DataFrame.from_dict(Measurements,orient='index')
-print(Measurements)
+
 # Merge the data bassed on the image name
 
 merged_df = pd.merge(Measurements, Scales, on="image_name", how="inner") 
