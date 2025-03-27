@@ -52,7 +52,7 @@ def CropImagesFromYOLO(Original_Images, YOLO_Annotations, Crop_mode, Save_folder
                     break
 
             if ann_path is None:
-                print(f"Annotation file for {img_name} not found.")
+                print(f"Annotation file for {img_path} not found.")
                 continue
 
             img = cv2.imread(img_path)

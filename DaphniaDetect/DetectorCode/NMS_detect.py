@@ -43,23 +43,26 @@ def CropImagesFromYOLO(Original_Images, labels_folder, Crop_mode, Save_folder, c
     os.makedirs(Save_folder, exist_ok=True)
     cropped_images = {cls: [] for cls in Crop_mode}
     YOLO_Annotations = glob.glob(os.path.join(labels_folder, "*.txt"))
-    
+    print("Path to annotations",YOLO_Annotations)
     for img_path, img_name in zip(Original_Images, Image_names):
         try:
+
             # Get the base name of the image (without extension)
             base_name = os.path.splitext(os.path.basename(img_path))[0]
-
+            
+            print(os.path.splitext(base_name),YOLO_Annotations[2])
             # Find the corresponding annotation file by replacing the extension
             ann_path = None
             for ann in YOLO_Annotations:
-                if base_name in os.path.basename(ann):
+                if base_name == os.path.splitext(os.path.basename(ann))[0]:
                     ann_path = ann
                     break
-
+            
             if ann_path is None:
-                print(f"Annotation file for {img_name} not found.")
+                print(f"Annotation file for {img_path} not found.")
                 continue
-
+                
+            print(img_path, ann_path)
             img = cv2.imread(img_path)
             if img is None:
                 print(f"Error reading image {img_path}")
@@ -72,6 +75,8 @@ def CropImagesFromYOLO(Original_Images, labels_folder, Crop_mode, Save_folder, c
             
             for line in lines:
                 values = line.strip().split()
+                
+                print(values)
                 class_id = int(float(values[0]))  # YOLO class ID
                 
                 # Convert class ID to class name
@@ -81,8 +86,10 @@ def CropImagesFromYOLO(Original_Images, labels_folder, Crop_mode, Save_folder, c
                     continue  # Skip classes not in Crop_mode
                 
                 # Convert YOLO normalized coordinates to absolute pixel coordinates
-                x_center, y_center, bbox_width, bbox_height = map(float, values[1:])
+                # The values 6 is for some reason never  float but int in annotations
                 
+                x_center, y_center, bbox_width, bbox_height = map(float, values[1:])
+                print(x_center, y_center, bbox_width, bbox_height)
                 # Calculate absolute pixel coordinates
                 Xmin = int((x_center - bbox_width / 2) * width)
                 Ymin = int((y_center - bbox_height / 2) * height)
@@ -94,10 +101,14 @@ def CropImagesFromYOLO(Original_Images, labels_folder, Crop_mode, Save_folder, c
                 Ymin = max(0, Ymin)
                 Xmax = min(width, Xmax)
                 Ymax = min(height, Ymax)
-                
+		
+		
                 # Crop the image
                 crop = img[Ymin:Ymax, Xmin:Xmax]
-                
+                debug_img = img.copy()
+                #plt.imshow(debug_img)
+                #plt.plot([Xmin, Xmax, Xmax, Xmin, Xmin], [Ymin, Ymin, Ymax, Ymax, Ymin], color="red", linewidth=2)
+                #plt.show()
                 if crop.size == 0:
                     print(f"Invalid crop for {img_name}, class {class_name}")
                     continue

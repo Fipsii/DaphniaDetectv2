@@ -48,7 +48,7 @@ def process_image_folder(InputDir, OutputDir):
     results = {}
 
     for image_file in os.listdir(image_dir):
-        print(image_file)
+
         if image_file.endswith((".jpg",".jpeg", ".png")):
          
             image_name = os.path.splitext(image_file)[0]
@@ -69,7 +69,7 @@ def process_image_folder(InputDir, OutputDir):
             # Handle missing or empty annotations
             segmentation_masks = load_yolo_annotations(segmentation_path) or []
             bounding_boxes = load_yolo_annotations(detection_path) or []
-            print(bounding_boxes,segmentation_masks)
+
             # **Remove the first value from segmentation if present**
             if segmentation_masks and isinstance(segmentation_masks[0], list) and segmentation_masks[0][0] == 0:
                 segmentation_masks = [seg[1:] for seg in segmentation_masks]  # Remove first value from each mask
@@ -85,16 +85,14 @@ def process_image_folder(InputDir, OutputDir):
             
             if largest_mask is not None:
                 # Convert mask coordinates from (y, x) to (x, y) if necessary
-                #largest_mask = largest_mask[:, [1, 0]]  # Swap columns to correct the coordinates Is this correct?
+                largest_mask = largest_mask[:, [1, 0]]  # Swap columns to correct the coordinates Is this correct?
             
                 # Ensure the largest mask is in the right format (int32, and reshape for fillPoly)
-                largest_mask = largest_mask.astype(np.int32)
-                largest_mask = largest_mask.reshape((-1, 1, 2))
-            
-                # Fill the polygon area with white (255) on the black image
-                cv2.fillPoly(black_image, [largest_mask], (255))  # 255 for white color (single channel)
+
+                # Fill the polygon area
+                cv2.fillPoly(black_image, [largest_mask], (255))  
                         # Initialize the dictionary for this image
-            print(black_image, "Whats up")
+
             results[image_file] = {
                 "image_name": image_name,
                 "image_path": image_path,
@@ -138,7 +136,7 @@ def process_image_folder(InputDir, OutputDir):
             output_image_path = os.path.join(OutputDir, "Processed_Images", f"{image_name}_processed.png")
             os.makedirs(os.path.dirname(output_image_path), exist_ok=True)
             cv2.imwrite(output_image_path, black_image)
-    print(results)
+
     return results
 
 def load_yolo_annotations(file_path):
@@ -319,10 +317,11 @@ def Image_Rotation(test_dict, visualize=False):
 
             # Calculate the orientation of the contour
             temp_angle = getOrientation(contour, mask)  # Get orientation of the contour
-            angle_deg = -int(np.rad2deg(temp_angle)) - 90  # Convert to degrees
+            angle_deg = int(np.rad2deg(temp_angle))  # Convert to degrees
 
             # Rotate the mask based on the calculated angle
-            rotated_mask = imutils.rotate_bound(mask, angle_deg)
+            rotated_mask = imutils.rotate_bound(mask, -angle_deg +90)
+            #now they are rotated right
             break  # Only use the first valid contour
 
         # Store results in the dictionary
@@ -402,6 +401,7 @@ def Detect_Midpoint(data_dict, debug = False, outputdir = False):
     """
 
     for image_key, item in data_dict.items():
+        path = item.get("image_path")
         img = item.get("rotated_mask")
         bboxes = item.get("bboxes", {})  # Bounding boxes dictionary
         angle = item.get("angle", 0)  # Rotation angle (default 0)
@@ -420,11 +420,20 @@ def Detect_Midpoint(data_dict, debug = False, outputdir = False):
         CoorEye, CoorSb = None, None
 
         # Extract bounding boxes for Eye and Spina Base
-        # y/x ?
-        if "Eye" in bboxes:
-            CoorEye = (bboxes["Eye"][0]["y_center"], bboxes["Eye"][0]["x_center"])
-        if "Spina base" in bboxes:
-            CoorSb = (bboxes["Spina base"][0]["y_center"], bboxes["Spina base"][0]["x_center"])
+        # Initialize variables to store keypoints
+        CoorEye = None
+        CoorSb = None
+
+        # Loop through the keys and assign coordinates
+        for key in ["Eye", "Spina base"]:
+               box = bboxes[key][0]  # Assuming one box per key
+               x_center, y_center = box["x_center"], box["y_center"]
+        
+               # Assign coordinates based on the key
+               if key == "Eye":
+                   CoorEye = (int(x_center), int(y_center))
+               elif key == "Spina base":
+                   CoorSb = (int(x_center), int(y_center))
         
 
         # Ensure both key points exist before proceeding
@@ -434,9 +443,14 @@ def Detect_Midpoint(data_dict, debug = False, outputdir = False):
 
         try:
             # Transform coordinates based on rotation
-            Eye_trans = point_trans(CoorEye, np.deg2rad(angle), org_mask.shape, img.shape)
-            Sb_trans = point_trans(CoorSb, np.deg2rad(angle), org_mask.shape, img.shape)
 
+
+            ### But what is the angle
+            org_image = cv2.imread(path)
+
+            Eye_trans = point_trans(CoorEye, np.deg2rad(-angle+90), org_image.shape, img.shape)
+            Sb_trans = point_trans(CoorSb, np.deg2rad(-angle+90), org_image.shape, img.shape)
+		
             # Calculate midpoint
             MidX = (Eye_trans[0] + Sb_trans[0]) / 2
             MidY = (Eye_trans[1] + Sb_trans[1]) / 2
@@ -448,7 +462,7 @@ def Detect_Midpoint(data_dict, debug = False, outputdir = False):
 
         # Store midpoint in dictionary
         data_dict[image_key]["Mid_Points"] = Midpoint
-
+	
         # **Visualize key points on the rotated mask**
         if debug == True:
               output_folder = outputdir +"/transformation"
@@ -457,15 +471,18 @@ def Detect_Midpoint(data_dict, debug = False, outputdir = False):
               # Convert mask to color if grayscale
               if len(img.shape) == 2:
                   img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-            
+              
+  
               # Draw Eye (Blue), Spina Base (Red), and Midpoint (Green)
+              CoorEye = tuple(int(x) for x in CoorEye)
+              CoorSb = tuple(int(x) for x in CoorSb)
               cv2.circle(img, Eye_trans, 5, (255, 0, 0), -1)  # Blue for Eye
               cv2.circle(img, Sb_trans, 5, (0, 0, 255), -1)  # Red for Spina Base
               cv2.circle(img, Midpoint, 5, (0, 255, 0), -1)  # Green for Midpoint
       
               # Draw a line from Eye → Midpoint → Spina Base
-              cv2.line(img, Eye_trans, Midpoint, (255, 255, 0), 2)  # Cyan line Eye → Midpoint
-              cv2.line(img, Midpoint, Sb_trans, (255, 255, 0), 2)  # Cyan line Midpoint → Spina Base
+              #cv2.line(img, Eye_trans, Midpoint, (255, 255, 0), 2)  # Cyan line Eye → Midpoint
+              #cv2.line(img, Midpoint, Sb_trans, (255, 255, 0), 2)  # Cyan line Midpoint → Spina Base
       
               # Save the visualized image
               output_path = os.path.join(output_folder, f"{image_key}_midpoint_visualized.png")
@@ -489,6 +506,7 @@ def Measure_Width_Imhof(data_dict, debug = False, OutputDir = False):
     """
 
     for image_key, item in data_dict.items():
+
         rotated_image = item.get("rotated_mask")  # Get rotated image
         midpoint = item.get("Mid_Points")  # Get midpoint coordinates
       
@@ -523,7 +541,7 @@ def Measure_Width_Imhof(data_dict, debug = False, OutputDir = False):
         # Convert mask to color if grayscale
         if len(rotated_image.shape) == 2:
             rotated_image = cv2.cvtColor(rotated_image, cv2.COLOR_GRAY2BGR)
-        
+
         if debug == True:
           output_folder = OutputDir +"rotated"
           os.makedirs(output_folder, exist_ok=True)  # Ensure the output directory exists  
@@ -627,7 +645,8 @@ def Create_Visualization_Data(data_dict):
 
     for image_name, data in data_dict.items():
         try:
-
+            path = data.get("image_path")
+            
             # Extract width measurement data properly
             width_data = data.get("Width_Measurements", {})
             X_start = width_data.get("X_start", None)
@@ -637,26 +656,35 @@ def Create_Visualization_Data(data_dict):
             Midpoint = data.get("Mid_Points", None)
             angle = data.get("angle", 0)  # Default to 0 if no rotation
             Rotated_mask = data.get("rotated_mask", None)
-            Original_mask = data.get("mask", None)
+            
+            ## If we measure with sperfeld 
+            if Rotated_mask is None:
+                        Rotated_mask = data.get("Rotated_Mask_Perpendicular", None)
 
+            Original_mask = data.get("mask", None)
+            print("In Create Vis", X_start, X_end, Midpoint, Rotated_mask, Original_mask)
             # Skip if any essential data is missing
             if X_start is None or X_end is None or Midpoint is None or Rotated_mask is None or Original_mask is None:
                 print(f"Warning Create_Visualization_Data: Missing data for {image_name}. Skipping...")
                 continue
-
+            
             EntryY = ExitY = Midpoint[1]  # Y-coordinates remain the same
+            Original_image = cv2.imread(path)
+            
 
             if angle != 0:  # If image is rotated, transform coordinates
-                EntryX, EntryY = point_trans((X_start, EntryY), np.deg2rad(-angle), 
-                                             Rotated_mask.shape, Original_mask.shape)
-                ExitX, ExitY = point_trans((X_end, ExitY), np.deg2rad(-angle), 
-                                           Rotated_mask.shape, Original_mask.shape)
-                                           
+                EntryY, EntryX = point_trans((X_start, EntryY), np.deg2rad(angle-90), 
+                                             Rotated_mask.shape, Original_image.shape)
+                ExitY, ExitX = point_trans((X_end, ExitY), np.deg2rad(angle-90), 
+                                           Rotated_mask.shape, Original_image.shape)
+                                         
             else:  # If no rotation, use the raw values
                 EntryX, ExitX = X_start, X_end
                 EntryY, ExitY = Midpoint[1], Midpoint[1]  # Y remains the same for non-rotated
 
             # Store the results back into the dictionary
+            
+            ## Test for Sperfeld
             data["Width_X1"], data["Width_Y1"] = EntryX, EntryY
             data["Width_X2"], data["Width_Y2"] = ExitX, ExitY
 
@@ -683,9 +711,9 @@ def Measure_Width_Sperfeld(data_dict, visualize=False):
     """
     for image_key, data in data_dict.items():
         try:
-            img = data.get("org_mask", None)
+            img = data.get("mask", None)
             bboxes = data.get("bboxes", {})
-            
+
             if img is None or "Eye" not in bboxes or "Spina base" not in bboxes:
                 print(f"Warning Measure_Width_Sperfeld: Missing data for {image_key}. Skipping...")
                 continue
@@ -707,22 +735,23 @@ def Measure_Width_Sperfeld(data_dict, visualize=False):
             line_length = min(img.shape[1], img.shape[0])
             x_end = Midpoint[0] + line_length / (2 * np.sqrt(1 + perpendicular_slope**2))
             y_end = Midpoint[1] + perpendicular_slope * (x_end - Midpoint[0])
-
+            
+            
             # Compute rotation angle
             angle = np.arctan(slope)
-            rotated_image = imutils.rotate_bound(img, 270 - np.rad2deg(angle))
+            rotated_image = imutils.rotate_bound(img, np.rad2deg(angle))
 
             # Transform points for rotated image
-            angle_c = 1.5 * np.pi - angle
-            TransSb = point_trans(CoorSb, angle_c, img.shape, rotated_image.shape)
-            TransEye = point_trans(CoorEye, angle_c, img.shape, rotated_image.shape)
-            TransMid = point_trans(Midpoint, angle_c, img.shape, rotated_image.shape)
-            Line_endpoint = point_trans((x_end, y_end), angle_c, img.shape, rotated_image.shape)
 
-            # Store results in dictionary
-            data["Mid_Points"] = Midpoint
+            TransSb = point_trans(CoorSb, angle, img.shape, rotated_image.shape)
+            TransEye = point_trans(CoorEye, angle, img.shape, rotated_image.shape)
+            TransMid = point_trans(Midpoint, angle, img.shape, rotated_image.shape)
+            Line_endpoint = point_trans((x_end, y_end), angle, img.shape, rotated_image.shape)
+
+           
+            data["Mid_Points"] = TransMid
             data["Rotated_Mask_Perpendicular"] = rotated_image
-            data["Rotation_Angle"] = 270 - np.rad2deg(angle)
+            data["Rotation_Angle"] = np.rad2deg(angle)
 
             # Visualization (if enabled)
             if visualize:
@@ -730,17 +759,18 @@ def Measure_Width_Sperfeld(data_dict, visualize=False):
                 plt.subplot(1, 2, 2)
                 plt.imshow(rotated_image, cmap="gray")
                 plt.scatter(TransMid[0], TransMid[1], color='blue', label="Midpoint")
-                plt.scatter(TransEye[0], TransEye[1], color='red', label="Eye")
+                plt.scatter(TransEye[0], TransEye[1], color='black', label="Eye")
                 plt.scatter(TransSb[0], TransSb[1], color='green', label="Spina Base")
-                plt.plot([TransMid[0], Line_endpoint[0]], [TransMid[1], Line_endpoint[1]], 'r-', label="Perpendicular Line")
-                plt.legend()
+                plt.plot([TransMid[0], Line_endpoint[0]], [TransMid[1], Line_endpoint[1]], 'b-', label="Perpendicular Line")
+                plt.plot([TransEye[0], TransSb[0]], [TransEye[1], TransSb[1]], 'g-', label="Body Axis Line")
                 
                 plt.subplot(1, 2, 1)
                 plt.imshow(img, cmap="gray")
                 plt.scatter(Midpoint[0], Midpoint[1], color='blue', label="Midpoint")
-                plt.scatter(CoorEye[0], CoorEye[1], color='red', label="Eye")
+                plt.scatter(CoorEye[0], CoorEye[1], color='black', label="Eye")
                 plt.scatter(CoorSb[0], CoorSb[1], color='green', label="Spina Base")
-                plt.plot([Midpoint[0], x_end], [Midpoint[1], y_end], 'r-', label="Perpendicular Line")
+                plt.plot([Midpoint[0], x_end], [Midpoint[1], y_end], 'b-', label="Perpendicular Line")
+                plt.plot([CoorEye[0], CoorSb[0]], [CoorEye[1], CoorSb[1]], 'g-', label="Body Axis Line")
                 plt.legend()
                 plt.show()
 
@@ -754,7 +784,7 @@ def Measure_Width_Sperfeld(data_dict, visualize=False):
 
 def Calculate_Width_At_Midpoint(data_dict):
     """
-    Calculates the body width at the midpoint and updates data_dict.
+    Calculates the body width at the midpoint and updates data_dict for sperfeld
 
     Updates each entry with:
     - `Width_At_Midpoint`: The calculated width in pixels.
@@ -767,7 +797,9 @@ def Calculate_Width_At_Midpoint(data_dict):
         try:
             rotated_img = data.get("Rotated_Mask_Perpendicular", None)
             midpoint = data.get("Mid_Points", None)
-
+            
+            
+            print("Sperfeld_vis:",rotated_img, midpoint)
             if rotated_img is None or midpoint is None:
                 print(f"Warning Midpoint_calc: Missing data for {image_key}. Skipping...")
                 continue
@@ -777,7 +809,7 @@ def Calculate_Width_At_Midpoint(data_dict):
             if MidRow < 0 or MidRow >= rotated_img.shape[0]:  # Ensure valid row index
                 print(f"Warning: Invalid midpoint Y-coordinate for {image_key}. Skipping...")
                 continue
-
+            
             # Compute width by summing pixels in the selected row
             Width = np.sum(rotated_img[MidRow, :]) / 255  # Normalize by pixel intensity
 
@@ -785,35 +817,43 @@ def Calculate_Width_At_Midpoint(data_dict):
             reshaped_row = rotated_img[MidRow, :].reshape(-1, 1)
             X_start = np.argmax(reshaped_row)
             X_end = len(reshaped_row) - np.argmax(reshaped_row[::-1]) - 1
+            print("Calculate Width", X_start, X_end)
 
             # Store results in dictionary
-            data["Width_At_Midpoint"] = Width
-            data["Width_X1"] = X_start
-            data["Width_X2"] = X_end
-
+            data_dict[image_key]["Width_Measurements"] = {
+            "width": Width,
+            "X_start": X_start,
+            "X_end": X_end
+            }
+            
+          
         except Exception as e:
             print(f"Error processing {image_key}: {e}")
-            data["Width_At_Midpoint"] = 0
-            data["Width_X1"] = 0
-            data["Width_X2"] = 0
+            data_dict[image_key]["Width_Measurements"] = {
+            "width": 0,
+            "X_start": 0,
+            "X_end": 0
+            }
 
     return data_dict  # Updated dictionary
 
 
 def WidthImhof(ImageFolder, OutputFolder):
   # Example usage
-  print(ImageFolder, "Used_Folder")
+
   test = process_image_folder(ImageFolder,OutputFolder)
-  print(test,OutputFolder)
-  #print(test)
+
+
   mask_dir = Path(OutputFolder) / 'Segmentation' / 'mask'
   
   Image_Rotation(test)
-  print(test)
-  Midpoints = Detect_Midpoint(test)
-  print(Midpoints, "Midpoints")
-  Width = Measure_Width_Imhof(Midpoints)
-  print(Width, "Midpoints")
+
+  Midpoints = Detect_Midpoint(test,debug = False, outputdir = "/home/fipsi/DaphniaDetectv2/DaphniaDetect/Mid")
+
+  Width = Measure_Width_Imhof(Midpoints, debug=True, OutputDir = "/home/fipsi/DaphniaDetectv2/DaphniaDetect/Detector")
+
+  ## Until here all issues seem to be fixed
+  ## 
   ## Do this for non org images
   
   
@@ -825,7 +865,7 @@ def WidthImhof(ImageFolder, OutputFolder):
   data.to_csv(f"{OutputFolder}/data.csv")
   return(Values_To_Be_Drawn)
 
-# Imhof broades oint straight daphnia (not perpendicular to eye spina axis)
+# Imhof broadest point straight daphnia (not perpendicular to eye spina axis)
 # Sperfeld broades point perpendicular to eye spina
 # Rabus Maximum distance between the dorsal and the ventral edge of the carapace
 
@@ -834,11 +874,23 @@ def WidthRabus(ImageFolder, OutputFolder):
   test = process_image_folder(ImageFolder,OutputFolder)
   mask_dir = Path(OutputFolder) / 'Segmentation' / 'mask'
 
-  #print(test)
+
   Image_Rotation(test)
   Midpoints = Detect_Midpoint(test)
   Width = Measure_Width_Rabus(Midpoints, OutputFolder)
   Values_To_Be_Drawn = Create_Visualization_Data(Width)
+  
+  return(Values_To_Be_Drawn)
+
+
+def WidthSperfeld(ImageFolder, OutputFolder):
+  # Example usage
+  test = process_image_folder(ImageFolder,OutputFolder)
+  mask_dir = Path(OutputFolder) / 'Segmentation' / 'mask'
+
+  Midpoints = Detect_Midpoint(test)
+  Width = Measure_Width_Sperfeld(test, False)
+  Values_To_Be_Drawn = Calculate_Width_At_Midpoint_Sperfeld(Midpoints)
   
   return(Values_To_Be_Drawn)
 
@@ -914,11 +966,11 @@ def visualize_and_save(data_dict, output_folder, scale_mode):
                print("Scale given manually; no calculation possible")
 
             elif scale_mode != 0:
-               print(annotations["coordinates_scale"])
+
                Coordinates = annotations["coordinates_scale"]
 
                X1, X2, Y = Coordinates[0][0], Coordinates[0][2], Coordinates[0][3]
-               print(X1, X2, Y)
+
 
                # Draw a solid horizontal line
                cv2.line(img, (X1, Y - 50), (X2, Y - 50), (0, 255, 0), 1)  # Green, thickness=1
@@ -949,7 +1001,6 @@ def visualize_and_save(data_dict, output_folder, scale_mode):
         except Exception as e:
 
              if img is not None:
-                  print(f"Image shape: {img.shape}")  # Debugging info
 
                   # Calculate font size for error text
                   font_size = max(0.5, min(img.shape[1], img.shape[0]) / 800)
@@ -968,4 +1019,79 @@ def visualize_and_save(data_dict, output_folder, scale_mode):
         print(f"Saved at {output_path}")
 
         
+def Calculate_Width_At_Midpoint_Sperfeld(data_dict):
+    """
+    Calculates the body width at the midpoint and updates data_dict for sperfeld
 
+    Updates each entry with:
+    - `Width_At_Midpoint`: The calculated width in pixels.
+    - `X_start` and `X_end`: The entry and exit X-coordinates of the width.
+
+    :param data_dict: Dictionary containing rotated images and midpoints.
+    :return: Updated data_dict with width measurements.
+    """
+    for image_key, data in data_dict.items():
+        try:
+            rotated_img = data.get("Rotated_Mask_Perpendicular", None)
+            midpoint = data.get("Mid_Points", None)
+            img = data.get("mask", None)
+            angle = data.get("Rotation_Angle", 0) 
+            if rotated_img is None or midpoint is None:
+                print(f"Warning Midpoint_calc: Missing data for {image_key}. Skipping...")
+                continue
+
+            
+
+            
+            
+            MidRow = int(midpoint[1])  # Y-coordinate of the midpoint
+
+            if MidRow < 0 or MidRow >= rotated_img.shape[0]:  # Ensure valid row index
+                print(f"Warning: Invalid midpoint Y-coordinate for {image_key}. Skipping...")
+                continue
+            grayscale_img = cv2.cvtColor(rotated_img, cv2.COLOR_RGB2GRAY)
+            # Compute width by summing pixels in the selected row
+            Width = np.sum(grayscale_img[MidRow, :]) / 255  # Normalize by pixel intensity
+            
+            
+            # Find X_start and X_end
+            reshaped_row = rotated_img[MidRow, :].reshape(-1, 1)
+            X_start = np.argmax(reshaped_row)
+            X_end = len(reshaped_row) - np.argmax(reshaped_row[::-1]) - 1
+            print("Calculate Width", X_start, X_end, "MidRow", int(midpoint[1]))
+            
+            ## Correct for the 3 channels
+            
+            X_start = X_start//3
+            X_end = X_end//3
+            # Store results in dictionary
+            data_dict[image_key]["Width_Measurements"] = {
+            "width": Width,
+            "X_start": X_start,
+            "X_end": X_end
+            }
+            
+            print(X_start,np.deg2rad(-angle))
+            EntryY,EntryX = point_trans((X_start,MidRow),np.deg2rad(-angle), rotated_img.shape, img.shape)
+            ExitY, ExitX = point_trans((X_end,MidRow),np.deg2rad(-angle), rotated_img.shape, img.shape)
+            
+            data["Width_X1"], data["Width_Y1"] = EntryX, EntryY
+            data["Width_X2"], data["Width_Y2"] = ExitX, ExitY
+            
+            print(data["Width_X2"], data["Width_Y2"])
+            #plt.clf()
+            #plt.scatter(midpoint[0],midpoint[1], color='blue', label="Midpoint")
+            #plt.scatter(X_start,midpoint[1], color='blue', label="Midpoint")
+            #plt.scatter(X_end,midpoint[1], color='blue', label="Midpoint")
+            #plt.imshow(rotated_img, cmap="gray")
+            #plt.show()
+          
+        except Exception as e:
+            print(f"Error processing {image_key}: {e}")
+            data_dict[image_key]["Width_Measurements"] = {
+            "width": 0,
+            "X_start": 0,
+            "X_end": 0
+            }
+
+    return data_dict  # Updated dictionary
