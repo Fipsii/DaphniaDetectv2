@@ -17,8 +17,6 @@ OutputDir: str = script_dir + "/Detector"
 
 # Paths to trained YOLO model weights
 Bbox: str = os.path.join(script_dir, "Model/detect/weights/best.pt")  # Model for bounding box detection
-Segment: str = os.path.join(script_dir, "Model/segment/weights/best.pt")  # Model for segmentation
-Classify: str = os.path.join(script_dir, "Model/classify/weights/best.pt")  # Model for classification
 
 # Directory containing input images
 ImageDir: str = None
