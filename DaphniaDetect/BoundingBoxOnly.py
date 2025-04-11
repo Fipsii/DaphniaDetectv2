@@ -1,5 +1,5 @@
 # Import required modules from the CollectedCode package
-from DetectorCode import NMS_Crop, NMS_detect, SaveData, ConvertToJPG
+from DetectorCode import NMS_detect, SaveData, ConvertToJPG
 import os
 import json
 import pandas as pd
