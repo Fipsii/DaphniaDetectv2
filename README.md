@@ -16,3 +16,16 @@ Make a python environment of your own and tell pdm to use it with `pdm use /path
 ```
 pdm sync --group dev
 ```
+
+This will install the application into the environment and you can call the scripts from the command line, e.g.:
+```
+conda activate <env>
+python DaphniaDetectv2/src/daphniadetectv2/BoundingBoxOnly.py
+```
+
+Alternatively, install the project into your project.
+For example, as an editable install from a local folder with pdm:
+```
+cd your-project
+pdm add -e /path/to/DaphniaDetectv2 --group dev
+```
