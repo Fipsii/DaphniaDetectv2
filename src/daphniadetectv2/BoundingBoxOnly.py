@@ -11,9 +11,10 @@ import os
 
 
 def extract_bounding_box(ImageDir: str = None, OutputDir: str = None) -> None:
+    # Get the directory where the script is located
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+
     if OutputDir is None:
-        # Get the directory where the script is located
-        script_dir = os.path.dirname(os.path.abspath(__file__))
         # Output directory for storing results
         OutputDir: str = script_dir + "/Detector"
 
@@ -28,8 +29,9 @@ def extract_bounding_box(ImageDir: str = None, OutputDir: str = None) -> None:
             print("Invalid path. Please try again.")
             ImageDir = input("Please enter the path to the image folder: ").strip()
 
-    if script_dir == os.path.dirname(os.path.abspath(__file__)):
-        print(f"No save location specified saving results to {script_dir}")
+    # TODO: is this needed?
+    # if script_dir == os.path.dirname(os.path.abspath(__file__)):
+        # print(f"No save location specified saving results to {script_dir}")
 
 
     # ======================================
