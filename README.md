@@ -14,7 +14,7 @@ Recommended installation with [PDM](https://pdm-project.org/latest/).
 Make a python environment of your own and tell pdm to use it with `pdm use /path/to/your/venv` or let pdm handle the venv for you and simply:
 
 ```
-pdm sync --group dev
+pdm sync
 ```
 
 This will install the application into the environment and you can call the scripts from the command line, e.g.:
@@ -27,5 +27,5 @@ Alternatively, install the project into your project.
 For example, as an editable install from a local folder with pdm:
 ```
 cd your-project
-pdm add -e /path/to/DaphniaDetectv2 --group dev
+pdm add "daphniadetectorv2 @ git+http://github.com/cfleur/DaphniaDetectv2.git@main#egg=daphniadetectorv2"
 ```

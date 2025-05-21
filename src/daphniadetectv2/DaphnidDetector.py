@@ -1,5 +1,5 @@
 # Import required modules from the CollectedCode package
-from DetectorCode import NMS_detect, SegmentYOLODeploy, YOLODeploy, DataDict, ScaleDetect,LengthMeasure, ConvertToJPG
+from daphniadetectv2.DetectorCode import NMS_detect, SegmentYOLODeploy, YOLODeploy, DataDict, ScaleDetect,LengthMeasure, ConvertToJPG
 import os
 import json
 import pandas as pd

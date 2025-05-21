@@ -14,6 +14,6 @@ license = {text = "GPLv3"}
 requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
-
 [tool.pdm]
+package-dir = {"" = "src"}
 distribution = true

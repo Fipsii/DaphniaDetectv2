@@ -10,19 +10,17 @@ import pandas as pd
 import os
 
 
-def extract_bounding_box() -> None:
-    # Get the directory where the script is located
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-
-    # Output directory for storing results
-    OutputDir: str = script_dir + "/Detector"
+def extract_bounding_box(ImageDir: str = None, OutputDir: str = None) -> None:
+    if OutputDir is None:
+        # Get the directory where the script is located
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        # Output directory for storing results
+        OutputDir: str = script_dir + "/Detector"
 
     # Paths to trained YOLO model weights
     Bbox: str = os.path.join(script_dir, "Model/detect/weights/best.pt")  # Model for bounding box detection
 
     # Directory containing input images
-    ImageDir: str = None
-    ImageDir = "/home/fipsi/Downloads/Induced.tif"
     # If no folder was selected request a path
     if not ImageDir or not os.path.exists(ImageDir):
         ImageDir = input("Please enter the path to the image folder: ").strip()
