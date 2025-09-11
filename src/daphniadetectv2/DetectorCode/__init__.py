@@ -1,3 +1,4 @@
+from .NMS_Crop import *
 from .NMS_detect import *
 from .SegmentYOLODeploy import *
 from .YOLODeploy import *

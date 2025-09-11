@@ -25,7 +25,7 @@ from pathlib import Path
 import torch
 from ultralytics import YOLO
 import numpy as np
-
+from PIL import Image
 def Segment_Exp(ImageDir, OutputDir,ModelPath, Vis=True):
     """
     Run segmentation on images using YOLOv11 (or another variant).
@@ -35,6 +35,7 @@ def Segment_Exp(ImageDir, OutputDir,ModelPath, Vis=True):
     :param OutputDir: Directory to save results.
     :param Vis: Boolean to save visualized outputs.
     """
+
     # Load the YOLOv11 segmentation model
     model = YOLO(ModelPath)
 

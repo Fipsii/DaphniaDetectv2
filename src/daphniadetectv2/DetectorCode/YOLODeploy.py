@@ -15,15 +15,14 @@ def Classify_Species(Folder_With_Images, Classifier_Location):
         print("No images found in the specified folder.")
         return {}
 
-    # Run model prediction on all images at once
-    results = model(image_paths,batch=1, stream = True,imgsz=1280, verbose=False)  # Batch inference
-
     # Class mapping
     class_labels = model.names
 
-    # Process predictions
+    # Process predictions one at a time
     results_data = {}
-    for image_path, result in zip(image_paths, results):
+    for image_path in image_paths:
+        result = model(image_path, imgsz=1280, verbose=False)[0]  # Run inference on a single image
+
         probs = result.probs.cpu().numpy()  # Convert to NumPy array
 
         predicted_class = np.argmax(probs.data) if np.max(probs.data) >= 0.75 else np.nan
@@ -33,5 +32,4 @@ def Classify_Species(Folder_With_Images, Classifier_Location):
         results_data[filename] = species  # Store result in dictionary
 
     return results_data  # Return dictionary instead of DataFrame
-
 

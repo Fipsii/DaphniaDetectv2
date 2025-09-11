@@ -1,21 +1,19 @@
 task: detect
 mode: train
 model: yolo11n.pt
-data: /home/philipp/BboxAll/Split/bbox.yaml
+data: /home/philipp/AllSegmentColor/data.yaml
 epochs: 1000
 time: null
-patience: 100
-batch: 16
+patience: 50
+batch: -1
 imgsz: 1280
 save: true
 save_period: -1
 cache: false
-device:
-- 0
-- 1
+device: null
 workers: 8
 project: null
-name: train21
+name: AllCol4
 exist_ok: false
 pretrained: true
 optimizer: auto
@@ -70,7 +68,7 @@ int8: false
 dynamic: false
 simplify: true
 opset: null
-workspace: 4
+workspace: null
 nms: false
 lr0: 0.01
 lrf: 0.01
@@ -84,7 +82,6 @@ cls: 0.5
 dfl: 1.5
 pose: 12.0
 kobj: 1.0
-label_smoothing: 0.0
 nbs: 64
 hsv_h: 0.015
 hsv_s: 0.7
@@ -106,4 +103,4 @@ erasing: 0.4
 crop_fraction: 1.0
 cfg: null
 tracker: botsort.yaml
-save_dir: runs/detect/train21
+save_dir: runs/detect/AllCol4
