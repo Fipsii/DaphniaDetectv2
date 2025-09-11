@@ -564,6 +564,9 @@ def makeDfwithfactors(list_of_names,ConvFactor, Scale_Mode,Values=[],Lines =[]):
 
   List_of_scale_numbers, List_of_scale_units = parse_and_convert_to_mm(Values)
   
+  LengthOpt = None
+  UnitOpt = None
+  
   if Scale_Mode == 0:
     print(f"Using manual factor of {ConvFactor} px/mm")
     LengthOpt = 0

@@ -2,10 +2,10 @@ def Classify_Species(Folder_With_Images, Classifier_Location):
     import os
     import numpy as np
     from ultralytics import YOLO
-
+    import re
     # Load the YOLO model once
     model = YOLO(Classifier_Location)
-
+    print(Folder_With_Images)
     # Get all image paths directly from the folder
     image_paths = [os.path.join(Folder_With_Images, filename) 
                    for filename in os.listdir(Folder_With_Images) 

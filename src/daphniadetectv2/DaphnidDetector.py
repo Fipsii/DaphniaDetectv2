@@ -26,6 +26,9 @@ SpinaModel: str = "/home/fipsi/Downloads/AllCol28/weights/best.pt"  # Model for 
 # Directory containing input images
 ImageDir: str = None
 
+# Should be classified?
+Classify_Species = True
+
 # If no folder was selected request a path
 if not ImageDir or not os.path.exists(ImageDir):
     ImageDir = input("Please enter the path to the image folder: ").strip()
@@ -89,8 +92,9 @@ SegmentYOLODeploy.Segment_Exp(ImageDir, OutputDir,ModelPath = Segment, Vis=True)
 # Returns:
 # - (dict): Dictionary mapping image names to classified species
 
-DaphniaCrops = OutputDir + "Detection/crops/Daphnia"
-species: dict = YOLODeploy.Classify_Species(OutputDir, Classify)
+if Classify_Species == True:
+ DaphniaCropDir = OutputDir + "/Detection/crops/Daphnia"
+ species: dict = YOLODeploy.Classify_Species(DaphniaCropDir, Classify)
 
 # ======================================
 # STEP 5: MEASUREMENTS
@@ -179,10 +183,12 @@ Measurements = Measurements.reset_index()
 Measurements = Measurements.rename(columns={'image_name': 'image_name_no_ext'})
 Measurements.columns.values[0] = 'image_name'
 
-
-# merged_df = pd.merge(Measurements, Scales, on="image_name", how="inner") 
+if species:
+	species_df = pd.DataFrame(list(species.items()), columns=['image_name', 'species'])
+	Measurements = Measurements.merge(species_df, on='image_name', how='left')
 
 Measurements.to_csv(f"{OutputDir}/data.csv")
+
 
 scaled_data = Measurements.apply(LengthMeasure.scale_values, axis=1).apply(pd.Series)
 scaled_data.to_csv(f"{OutputDir}/scaled_measurements.csv", index=False)
