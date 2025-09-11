@@ -22,7 +22,7 @@ Classify: str = os.path.join(script_dir, "Model/classify/weights/best.pt")  # Mo
 
 # Directory containing input images
 ImageDir: str = None
-ImageDir = "/home/fipsi/Downloads/2025_Images_Sorted/Classification_flat"
+
 # If no folder was selected request a path
 if not ImageDir or not os.path.exists(ImageDir):
     ImageDir = input("Please enter the path to the image folder: ").strip()
