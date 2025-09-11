@@ -29,6 +29,7 @@ def Classify_Species(Folder_With_Images, Classifier_Location):
         species = class_labels.get(predicted_class, "unknown")  # Get species name
 
         filename = os.path.basename(image_path)  # Extract filename
+        filename = re.sub(r'_Daphnia\.jpg$', '.jpg', filename) # Correct so it fits for the original image
         results_data[filename] = species  # Store result in dictionary
 
     return results_data  # Return dictionary instead of DataFrame

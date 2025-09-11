@@ -84,12 +84,13 @@ SegmentYOLODeploy.Segment_Exp(ImageDir, OutputDir,ModelPath = Segment, Vis=True)
 
 # Classify detected species using a trained classification model
 # Parameters:
-# - ImageDir (str): Directory containing input images
+# - ImageDir (str): Directory containing input images 
 # - Classify (str): Path to the trained classification model
 # Returns:
 # - (dict): Dictionary mapping image names to classified species
 
-species: dict = YOLODeploy.Classify_Species(ImageDir, Classify)
+DaphniaCrops = OutputDir + "Detection/crops/Daphnia"
+species: dict = YOLODeploy.Classify_Species(OutputDir, Classify)
 
 # ======================================
 # STEP 5: MEASUREMENTS

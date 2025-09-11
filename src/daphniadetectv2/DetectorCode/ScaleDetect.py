@@ -641,14 +641,9 @@ def Scale_Measure(DataDict, Scale_Mode, Conv_factor=0.002139):
 
     # Use tqdm to show a single filling bar
     for image_path in tqdm(Paths_of_Images, desc="Detecting scales", unit="img"):
-        # Assuming process_folder takes a list of paths
-        # So we call it on [image_path] to process one at a time
-        
+        # Assuming process_folder takes a list of path
 
-        res, crp = process_folder([image_path])
-
-
-        
+        res, crp = process_folder([image_path])        
         results.append(res)
         crops.append(crp[0] if crp else None)
 
