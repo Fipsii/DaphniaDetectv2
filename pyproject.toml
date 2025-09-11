@@ -1,0 +1,19 @@
+[project]
+name = "daphniadetectv2"
+version = "0.1.0"
+description = "A pipeline for scientific analysis of animals of the genus Daphnia with YOLO."
+authors = [
+    {name = "", email = ""},
+]
+dependencies = ["pandas>=2.2.3", "opencv-python>=4.11.0.86", "imutils>=0.5.4", "torch>=2.6.0", "torchvision>=0.21.0", "torchaudio>=2.6.0", "ultralytics>=8.3.112", "easyocr>=1.7.2"]
+requires-python = ">=3.11"
+readme = "README.md"
+license = {text = "GPLv3"}
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm]
+package-dir = {"" = "src"}
+distribution = true
