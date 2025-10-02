@@ -1,0 +1,11 @@
+path: PATH
+train: train
+val: val
+test: test
+
+names:
+  0: cucullata
+  1: longicephala
+  2: longispina
+  3: magna
+  4: pulex
