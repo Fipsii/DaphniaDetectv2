@@ -105,7 +105,7 @@ def CropImagesFromYOLO(Original_Images, labels_folder, Crop_mode, Save_folder, c
 		
                 # Crop the image
                 crop = img[Ymin:Ymax, Xmin:Xmax]
-                debug_img = img.copy()
+                #debug_img = img.copy()
                 #plt.imshow(debug_img)
                 #plt.plot([Xmin, Xmax, Xmax, Xmin, Xmin], [Ymin, Ymin, Ymax, Ymax, Ymin], color="red", linewidth=2)
                 #plt.show()

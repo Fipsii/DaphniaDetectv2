@@ -1,6 +1,6 @@
 import logging
 logging.getLogger('easyocr').setLevel(logging.ERROR)
-from tqdm import tqdm
+
 import numpy as np
 import matplotlib.pyplot as plt
 import easyocr
@@ -8,7 +8,7 @@ import cv2
 import matplotlib.pyplot as plt
 import re
 import pandas as pd
-import time
+
 def safe_to_gray(image):
 
     try:
@@ -23,7 +23,7 @@ def safe_to_gray(image):
             raise ValueError(f"Cannot convert image to grayscale: {e}")
     return gray
 
-def find_contrasting_horizontal_line_in_monochrome_box(box_crop, visualize_randomized=True, tolerance=5):
+def find_contrasting_horizontal_line_in_monochrome_box(box_crop, visualize_randomized=False, tolerance=5):
     gray = safe_to_gray(box_crop)
     
     # Find most common pixel value (background)
@@ -37,12 +37,13 @@ def find_contrasting_horizontal_line_in_monochrome_box(box_crop, visualize_rando
     num_bg_pixels = np.sum(background_mask)
     gray_mod[background_mask] = np.random.randint(0, 256, size=num_bg_pixels)
 
-    #if visualize_randomized:
-        #plt.figure(figsize=(6,4))
-        #plt.title("Randomized Background Pixels in Grayscale Box")
-        #plt.imshow(gray_mod, cmap='gray')
-        #plt.axis('off')
-        #plt.show()
+    if visualize_randomized:
+        plt.figure(figsize=(6,4))
+        plt.title("Randomized Background Pixels in Grayscale Box")
+        plt.imshow(gray_mod, cmap='gray')
+        plt.axis('off')
+        plt.show()
+
     # Find longest horizontal run of pixels with values within tolerance
     longest_y = None
     longest_len = 0
@@ -80,6 +81,11 @@ def find_contrasting_horizontal_line_in_monochrome_box(box_crop, visualize_rando
         return None
 
 
+
+import numpy as np
+import cv2
+import numpy as np
+
 def expand_edges_by_one_pixel(mask):
     # mask is binary: black edges (0), white background (255)
     h, w = mask.shape
@@ -95,23 +101,14 @@ def expand_edges_by_one_pixel(mask):
     
     return new_mask
 
-
-def find_scale_box_edges(img, color_threshold=15, min_box_fraction=0.05):
-    # --- Check image ---
-    if img is None:
-        print("[ERROR] Image is None")
-        return [None, None]
-
-    h, w = img.shape[:2]
-    min_box_size_w = int(w * min_box_fraction)
-
-    # --- Helper functions ---
+def find_scale_box_edges(image: np.ndarray, color_threshold=30, min_box_size=50	):
     def is_black(pixel):
         return np.all(pixel < color_threshold)
 
     def find_edge(img, start, step):
+        h, w = img.shape[:2]
         x, y = start
-        while 0 <= x + step[0] < img.shape[1] and 0 <= y + step[1] < img.shape[0]:
+        while 0 <= x + step[0] < w and 0 <= y + step[1] < h:
             next_pixel = img[y + step[1], x + step[0]]
             if not is_black(next_pixel):
                 break
@@ -119,52 +116,35 @@ def find_scale_box_edges(img, color_threshold=15, min_box_fraction=0.05):
             y += step[1]
         return [x, y]
 
-    # --- Precompute masks ---
-    if img.ndim == 3:
-        black_mask = np.all(img[:, :, :3] < color_threshold, axis=2)
-    else:
-        black_mask = img < color_threshold
-
-    visited = np.zeros((h, w), dtype=bool)
-    boxes = []
-
-    # --- Scan only black+unvisited pixels ---
-    ys, xs = np.where(black_mask & ~visited)
-    for y, x in zip(ys, xs):
-        if visited[y, x]:
-            continue
-
-        # Found black pixel → find edges
-        top_left = find_edge(img, [x, y], [-1, 0])
-        top_right = find_edge(img, [x, y], [1, 0])
-        bottom_right = find_edge(img, top_right, [0, 1])
-        bottom_left = [top_left[0], bottom_right[1]]
-
-        width = abs(top_right[0] - top_left[0])
-        height = abs(bottom_right[1] - top_right[1])
-
-        if width >= min_box_size_w:
-            boxes.append([top_left, bottom_right])
-            visited[top_left[1]:bottom_right[1]+1,
-                    top_left[0]:bottom_right[0]+1] = True
-
-    if not boxes:
+    def scan_for_box(img):
+        # Scan from right to left with step 5, top to bottom for each column
+        for x in range(img.shape[1] - 5, 5, -5):
+            for y in range(img.shape[0]):
+                pixel = img[y, x][:3] if img.ndim == 3 else img[y, x]
+                if is_black(pixel):
+                    top_left = find_edge(img, [x, y], [-1, 0])
+                    top_right = find_edge(img, [x, y], [1, 0])
+                    bottom_right = find_edge(img, top_right, [0, 1])
+                    width = abs(top_right[0] - top_left[0])
+                    height = abs(bottom_right[1] - top_right[1])
+                    if width >= min_box_size and height >= min_box_size:
+                        return [top_left, bottom_right]
         return [None, None]
 
-    # --- Pick the largest box ---
-    largest_box = max(boxes, key=lambda b: (b[1][0]-b[0][0]) * (b[1][1]-b[0][1]))
+    box = scan_for_box(image)
+    if box != [None, None]:
+        return box
 
-    # --- Visualization ---
-    vis = img.copy()
-    for box in boxes:
-        cv2.rectangle(vis, tuple(box[0]), tuple(box[1]), (255, 0, 0), 2)
-    cv2.rectangle(vis, tuple(largest_box[0]), tuple(largest_box[1]), (0, 255, 0), 3)
+    # Fallback: detect rectangles using edges
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 10, 150)
+    rects = find_rectangles(edges, min_area=2000)
+    
 
-    return largest_box
+    if rects[0] is not None and len(rects) > 0:
+    	return rects[0][:2], rects[0][2:]
 
-
-
-
+    return [None, None]
 
 
 import cv2
@@ -304,7 +284,7 @@ def detect_lines(image):
     top_left, bottom_right = find_scale_box_edges(image)
 
     if top_left is not None and bottom_right is not None and not all(abs(a - b) <= 20 for a, b in zip(top_left, bottom_right)):
-
+        print("Scale box detected. Finding scale")
         top_left, bottom_right = shrink_box_to_uniform_border(image, top_left, bottom_right)
 
         x1, y1 = top_left
@@ -331,9 +311,6 @@ def detect_lines(image):
         # Fallback: try to detect horizontal line directly
         gray = safe_to_gray(image)
         edges = cv2.Canny(gray, 50, 150)
-        ##plt.clf()
-        ##plt.imshow(edges, cmap='gray')
-        ##plt.show()
         line_coords = find_strictly_horizontal_line(edges)
 
         if line_coords is not None:
@@ -440,7 +417,13 @@ def process_folder(List_of_paths):
         if crop and all(part is not None for part in crop):
             try:
                 gray = safe_to_gray(crop[0])
-                crop_data = (gray, crop[1])
+                equalized = cv2.equalizeHist(gray)
+
+                # Thresholding using median value
+                median_val = np.median(equalized)
+                thresholded = np.where(equalized < median_val, 0, 255).astype(np.uint8)
+
+                crop_data = (equalized, crop[1])
                 all_crops.append(crop_data)
                 all_results.append(None)  # Placeholder for detection result
             except Exception as e:
@@ -526,30 +509,6 @@ def parse_and_convert_to_mm(measurements):
 
 
 
-def safe_int_list(values):
-    out = []
-    for v in values:
-        try:
-            if v is None or (isinstance(v, str) and v.strip().upper() == "NA"):
-                out.append(np.nan)   # mark invalid as NaN
-            else:
-                out.append(int(v))
-        except Exception:
-            out.append(np.nan)
-    return out
-
-def safe_float_list(values):
-    out = []
-    for v in values:
-        try:
-            if v is None or (isinstance(v, str) and v.strip().upper() == "NA"):
-                out.append(np.nan)
-            else:
-                out.append(float(v))
-        except Exception:
-            out.append(np.nan)
-    return out
-
 def makeDfwithfactors(list_of_names,ConvFactor, Scale_Mode,Values=[],Lines =[]):
   
   ### This function has two modes. 1) If the user declares that we only have one 
@@ -564,9 +523,6 @@ def makeDfwithfactors(list_of_names,ConvFactor, Scale_Mode,Values=[],Lines =[]):
 
   List_of_scale_numbers, List_of_scale_units = parse_and_convert_to_mm(Values)
   
-  LengthOpt = None
-  UnitOpt = None
-  
   if Scale_Mode == 0:
     print(f"Using manual factor of {ConvFactor} px/mm")
     LengthOpt = 0
@@ -580,32 +536,15 @@ def makeDfwithfactors(list_of_names,ConvFactor, Scale_Mode,Values=[],Lines =[]):
 
   elif Scale_Mode == 1:
 
-    # Filter out invalid entries
-    valid_lengths = [x for x in list_of_lengths if x != "NA"]
-    # Compute LengthOpt safely
-    if valid_lengths:
-     LengthOpt = int(max(set(valid_lengths), key=valid_lengths.count))
-    else:
-     LengthOpt = None  # or a default value like 0
-     
-     # Similarly for UnitOpt
-     valid_units = [x for x in List_of_scale_numbers if x not in ("NA", None)]
-     if valid_units:
-      UnitOpt = float(max(set(valid_units), key=valid_units.count))
-     else:
-      UnitOpt = None  # or default like 1.0
-
+    LengthOpt = int(max(set([x for x in list_of_lengths if x != "NA"]), key=list_of_lengths.count))
+    UnitOpt = float(max(set([x for x in List_of_scale_numbers if x != "NA"]), key=List_of_scale_numbers.count))
 
   # Different Scales
   elif Scale_Mode == 2:
 
     try:
-     LengthOpt = safe_int_list(list_of_lengths)
-     UnitOpt   = safe_float_list(List_of_scale_numbers)
-     
-     ## We change unusual scale values that can be confused with 1
-     UnitOpt = [1.0 if x == 7.0 else x for x in UnitOpt]
-     UnitOpt = [1.0 if x == 4.0 else x for x in UnitOpt]
+    	LengthOpt = [int(x) for x in list_of_lengths]
+    	UnitOpt = [float(x) for x in List_of_scale_numbers]
     except:
     	print("Error in makeDfwithfactors")
   else:
@@ -626,8 +565,6 @@ def makeDfwithfactors(list_of_names,ConvFactor, Scale_Mode,Values=[],Lines =[]):
   
 
 
-
-
 def Scale_Measure(DataDict, Scale_Mode, Conv_factor=0.002139):
     Paths_of_Images = []
     Name_of_Images = []
@@ -637,39 +574,33 @@ def Scale_Measure(DataDict, Scale_Mode, Conv_factor=0.002139):
         Paths_of_Images.append(image_path)
         Name_of_Images.append(image)
 
-    # Wrap processing in progress bar
-
-    results = []
-    crops = []
-
-    # Use tqdm to show a single filling bar
-    for image_path in tqdm(Paths_of_Images, desc="Detecting scales", unit="img"):
-        # Assuming process_folder takes a list of path
-
-        res, crp = process_folder([image_path])        
-        results.append(res)
-        crops.append(crp[0] if crp else None)
-
     if Scale_Mode != 0:
+        results, crops = process_folder(Paths_of_Images)
+
         # Flatten all tuples from all sublists inside results
         flattened = [item for sublist in results for item in sublist]
         text = []
 
         for res in results:
-            if res is None:
-                text.append("NA")
-            else:
-                try:
-                    _, txt, _ = res[0]  # assuming res is a list of tuples
-                    text.append(str(txt))
-                except Exception:
-                    text.append("NA")
+           if res is None:
+              text.append("NA")
+           else:
+               try:
+                   _, txt, _ = res[0]  # assuming res is a list of tuples
+                   text.append(str(txt))
+               except Exception: 
+
+                   text.append("NA")
+            
 
         crop_image, line_coor = zip(*crops)
+        
+
         Result_Df = makeDfwithfactors(Name_of_Images, Conv_factor, Scale_Mode, text, line_coor)
 
     else:
         Result_Df = makeDfwithfactors(Name_of_Images, Conv_factor, Scale_Mode)
+
     return Result_Df
 
 

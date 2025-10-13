@@ -56,8 +56,11 @@ def process_image_folder(InputDir, OutputDir):
     :return: Dictionary with image filenames as keys and their pixel-based annotations.
     """
     image_dir = InputDir
-    segmentation_dir = os.path.join(OutputDir, "Segmentation", "labels")
-    detection_dir = os.path.join(OutputDir, "Detection", "labels")
+
+    
+    OutputDir = Path(OutputDir)
+    segmentation_dir = OutputDir / "Segmentation" / "labels"
+    detection_dir = OutputDir / "Detection" / "labels"
     
     results = {}
 
@@ -77,6 +80,8 @@ def process_image_folder(InputDir, OutputDir):
             image_shape = image.shape  # (height, width, channels)
 
             # Load YOLO annotations
+            # We work with the _Daphnia files for the segmentation
+
             segmentation_path = os.path.join(segmentation_dir, f"{image_name}.txt")
             detection_path = os.path.join(detection_dir, f"{image_name}.txt")
 		
