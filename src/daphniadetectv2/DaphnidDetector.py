@@ -79,7 +79,10 @@ NMS_detect_Rezoom.DetectOrgans(ImageDir, OutputDir, vis=True, NMS=True, crop=Tru
 # - Vis (bool): Whether to visualize segmentation results
 # Returns:
 # - (folder): folder in outputdir with segmentation results sepcified
-SegmentYOLODeploy.Segment_Exp(ImageDir, OutputDir,ModelPath = Segment, Vis=True)
+
+DaphniaCropDir = OutputDir + "/Detection/crops/Daphnia"
+
+SegmentYOLODeploy.Segment_Exp(DaphniaCropDir, ImageDir, OutputDir,ModelPath = Segment, Vis=True)
 
 # ======================================
 # STEP 4: CLASSIFY SPECIES
@@ -93,7 +96,7 @@ SegmentYOLODeploy.Segment_Exp(ImageDir, OutputDir,ModelPath = Segment, Vis=True)
 # - (dict): Dictionary mapping image names to classified species
 
 if Classify_Species == True:
- DaphniaCropDir = OutputDir + "/Detection/crops/Daphnia"
+ 
  species: dict = YOLODeploy.Classify_Species(DaphniaCropDir, Classify)
 
 # ======================================

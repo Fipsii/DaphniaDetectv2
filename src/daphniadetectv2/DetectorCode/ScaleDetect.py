@@ -535,9 +535,17 @@ def makeDfwithfactors(list_of_names,ConvFactor, Scale_Mode,Values=[],Lines =[]):
   # Uniform Scale
 
   elif Scale_Mode == 1:
-
+    
+    print(List_of_scale_numbers)
     LengthOpt = int(max(set([x for x in list_of_lengths if x != "NA"]), key=list_of_lengths.count))
-    UnitOpt = float(max(set([x for x in List_of_scale_numbers if x != "NA"]), key=List_of_scale_numbers.count))
+    # Keep only numbers (int or float)
+    valid_numbers = [x for x in List_of_scale_numbers if isinstance(x, (int, float))]
+
+    if valid_numbers:
+        UnitOpt = float(max(set(valid_numbers), key=valid_numbers.count))
+    else:
+        UnitOpt = None  # or some default value
+
 
   # Different Scales
   elif Scale_Mode == 2:
