@@ -705,8 +705,6 @@ def SaveExtraDetections(extra_detections, labels_file, roi_coords, img_shape):
 
 
 
-import os
-import cv2
 
 def SpinaTipEnhance(image_path, label_file, model):
     """
@@ -773,9 +771,6 @@ def SpinaTipEnhance(image_path, label_file, model):
 
         # Save new detections into label file
         SaveExtraDetections(extra_detections, label_file, roi_coords, img_shape)
-
-
-
 
 
 
