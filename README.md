@@ -49,7 +49,7 @@ pdm sync
 Use pdm run to execute scripts within the environment:
 
 ```bash
-pdm run python DaphniaDetectv2/src/daphniadetectv2/DaphnidDetector.py
+pdm run python DaphniaDetectv2/src/DaphniaDetectv2/DaphnidDetector.py
 ```
 
 ## Method 2: Standard Pip (venv)
