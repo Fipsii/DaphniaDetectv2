@@ -103,7 +103,7 @@ def TranslateDaphniaCropToOriginal(CropSegDir, CropImgDir, CropAnnoDir, Original
                 if not line:
                     continue
                 parts = line.split()
-                if int(parts[0]) == daphnia_class_id:
+                if int(float(parts[0])) == daphnia_class_id:
                     cls_id, xc, yc, w, h = map(float, parts[:5])
                     break
 

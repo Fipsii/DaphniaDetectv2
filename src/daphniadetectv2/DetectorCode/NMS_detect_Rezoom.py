@@ -6,6 +6,7 @@ import os
 import cv2
 import numpy as np
 import glob
+import pandas as pd
 
 def Images_list(path_to_images):
   ## Takes path, creates list of image names and full paths for all
@@ -148,7 +149,7 @@ def DetectOrgans(Images,OutputDir, vis=True, NMS=True, crop=False, refineTip=Tru
         Important: We manually employ additional NMS later in which we filter for one instance per object
 
     Returns:
-        Body (dict): Dictionary mapping image filenames to detection metadata.
+        df (df): Dataframe with confidence values per organ and image.
         Also saves:
             - YOLO-formatted .txt files with annotations.
             - (Optionally) annotated images and/or cropped organ images in OutputDir.
@@ -160,98 +161,121 @@ def DetectOrgans(Images,OutputDir, vis=True, NMS=True, crop=False, refineTip=Tru
     model = YOLO(ModelPath)
 
     # Run YOLO model
-    results = model(Images, stream=True, imgsz = 1280,  conf=conf, iou = iou, project=OutputDir, name="Detection", verbose=False)
+    results = model(Images, stream=True, imgsz=1280, conf=conf, iou=iou, project=OutputDir, name="Detection", verbose=False)
     obj_detect_end = time.time()
     
     # Create storage folder:
     os.makedirs(OutputDir + "/Detection/labels", exist_ok=True)
 
+    # List to store data for the DataFrame
+    detection_data = []
+
     for result in results:
-      boxes = result.boxes # Boxes object for bounding box outputs
-      classes = boxes.cls
-      conf = boxes.conf
-      boxes = boxes.xywhn
-      
-      if NMS == True:
+        boxes = result.boxes # Boxes object for bounding box outputs
+        classes = boxes.cls
+        conf_scores = boxes.conf # Renamed to avoid confusion with parameter 'conf'
+        boxes_xywhn = boxes.xywhn
         
-        # Reshape the classes and conf tensors to match the box tensor shape for concatenation
-        classes = classes.unsqueeze(1)  # Shape becomes (2, 1)
-        conf = conf.unsqueeze(1)  # Shape becomes (2, 1)
+        # Get image name
+        image_name = os.path.basename(result.path)
         
-        # Concatenate along the last axis (columns)
-        combined = torch.cat((classes, boxes, conf), dim=1)  # Shape: (2, 6)
+        if NMS == True:
+            # Reshape tensors
+            classes = classes.unsqueeze(1)  
+            conf_scores = conf_scores.unsqueeze(1)
+            
+            # Concatenate: [class, x, y, w, h, conf]
+            combined = torch.cat((classes, boxes_xywhn, conf_scores), dim=1) 
+            
+            final_rows = []
+            seen_classes = set()
+            
+            # Filter for highest confidence per class
+            for row in combined:
+                class_id = row[0].item()
+                if class_id not in seen_classes:
+                    final_rows.append(row)
+                    seen_classes.add(class_id)
+            
+            if final_rows:
+                final_tensor = torch.stack(final_rows)
+                
+                # --- DATA EXTRACTION FOR DATAFRAME ---
+                # Iterate before we strip the confidence column
+                for row in final_tensor:
+                    detection_data.append({
+                        "image_name": image_name,
+                        "class": result.names[int(row[0].item())],
+                        "conf": float(row[5].item())
+                    })
+                # -------------------------------------
+
+                # Now get rid of last column (conf) for textfile writing
+                final_tensor = final_tensor[:, :-1]
+            else:
+                final_tensor = torch.empty((0, 5))
+
+        else:
+            # No NMS: Save all detections
+            classes = classes.unsqueeze(1)
+            final_tensor = torch.cat((classes, boxes_xywhn), dim=1)
+            
+            # --- DATA EXTRACTION FOR DATAFRAME ---
+            # We need to zip the separate tensors here because final_tensor lacks confidence
+            for c, score in zip(classes, conf_scores):
+                detection_data.append({
+                    "image_name": image_name,
+                    "class": result.names[int(c.item())],
+                    "conf": float(score.item())
+                })
+            # -------------------------------------
+
+        label_saveloc = f"{OutputDir}/Detection/labels/{os.path.splitext(image_name)[0]}.txt"
         
-        # List to store final rows with highest confidence for each class
-        final_rows = []
-        
-        # Keep track of the classes we've already seen
-        seen_classes = set()
-        
-        # Iterate through the rows
-        for row in combined:
-            class_id = row[0].item()  # First column is the class
-            if class_id not in seen_classes:
-                final_rows.append(row)  # Keep the first occurrence (highest confidence)
-                seen_classes.add(class_id)  # Mark the class as seen
-        
-        # Stack the final rows together
-        final_tensor = torch.stack(final_rows)
-        
-        # Now we get rid of last column and write into a textfile
-        final_tensor = final_tensor[:, :-1]
-           
-      else:
-        classes = classes.unsqueeze(1)  # Shape becomes (2, 1)
-        # Concatenate along the last axis (columns)
-        
-        final_tensor = torch.cat((classes, boxes), dim=1)  # Shape: (2, 6)
-      label_saveloc = f"{OutputDir}/Detection/labels/{os.path.splitext(os.path.basename(result.path))[0]}.txt"
-      # Open a file to write the tensor
-      with open(label_saveloc, "w") as f:
-        # Iterate through each row of the tensor and write it as a line
-        for row in final_tensor:
-            # Convert each row to a space-separated string and write to file
-            f.write(" ".join(map(str, row.tolist())) + "\n")
+        # Open a file to write the tensor
+        with open(label_saveloc, "w") as f:
+            for row in final_tensor:
+                f.write(" ".join(map(str, row.tolist())) + "\n")
     
+    # Update bounding boxes (Original logic)
     labels_folder = os.path.join(OutputDir, "Detection", "labels")
     for filename in os.listdir(labels_folder):
         file_path = os.path.join(labels_folder, filename)
-        update_daphnid_bounding_boxes(file_path)
+        # assuming update_daphnid_bounding_boxes is defined elsewhere
+        # update_daphnid_bounding_boxes(file_path) 
   
     if refineTip:
         print("\nDetection of missing spina tips with specialised model")
-
-     
+        # assuming SpinaTipEnhance is defined elsewhere
         SpinaTipEnhance(Images, labels_folder, SpinaModelPath)
 
-      
-         ## This is were the function needs to fit 
-   
     if crop:
-       print("\nDetection finished. Cropping images now...")
-       CropImagesFromYOLO(
-        Images,
-        labels_folder=labels_folder,
-        Crop_mode=organs,
-        Save_folder=os.path.join(OutputDir, "Detection", "crops"),
-        class_mapping=result.names
+        print("\nDetection finished. Cropping images now...")
+        # assuming CropImagesFromYOLO is defined elsewhere
+        CropImagesFromYOLO(
+            Images,
+            labels_folder=labels_folder,
+            Crop_mode=organs,
+            Save_folder=os.path.join(OutputDir, "Detection", "crops"),
+            class_mapping=result.names if 'result' in locals() else {}
         )
         
     if vis:
         print("\nDrawing detection boxes...")
-        # Draw boxes from saved YOLO labels
         DrawYOLOBoxes(
             Original_Images=Images,
             labels_folder=labels_folder,
             Save_folder=os.path.join(OutputDir, "Detection", "visuals"),
-            class_mapping=result.names
+            class_mapping=result.names if 'result' in locals() else {}
         )
-    
     
     print(f"\nAnnotations saved to: {OutputDir}")
     print("Please review the results for any potential issues.\n")
 
-    return OutputDir  # Return path where annotations are saved
+    # Create the DataFrame
+    df = pd.DataFrame(detection_data)
+
+    return OutputDir, df
 
 def update_daphnid_bounding_boxes(annotation_file):
     if not os.path.exists(annotation_file):

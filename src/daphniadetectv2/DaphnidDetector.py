@@ -1,5 +1,5 @@
 # Import required modules from the CollectedCode package
-from DetectorCode import NMS_Crop, NMS_detect_Rezoom, SegmentYOLODeploy, YOLODeploy, DataDict, ScaleDetect,LengthMeasure, ConvertToJPG
+from DetectorCode import NMS_detect_Rezoom, SegmentYOLODeploy, YOLODeploy, DataDict, ScaleDetect,LengthMeasure, ConvertToJPG, SaveData
 import os
 import json
 import pandas as pd
@@ -8,6 +8,7 @@ import pandas as pd
 # ==========================
 import time
 import os
+
 
 start = time.time()
 
@@ -65,8 +66,9 @@ ImageDir = ImageDir +"/JPG"
 # - crop (bool): Whether to crop detected regions
 # - ModelPath (str): Path to the trained YOLO model for detection
 
-NMS_detect_Rezoom.DetectOrgans(ImageDir, OutputDir, vis=True, NMS=True, crop=True,refineTip = False,organs = ["Heart","Daphnia", "Eye", "Spina tip", "Spina base"], ModelPath=Bbox, SpinaModelPath=SpinaModel)
-
+# Output: folder with annotations
+# - Confidence: Dataframe with assocaiated confidence values per organ and image
+_, Confidence = NMS_detect_Rezoom.DetectOrgans(ImageDir, OutputDir, vis=True, NMS=True, crop=True,refineTip = False,organs = ["Heart","Daphnia", "Eye", "Spina tip", "Spina base"], ModelPath=Bbox, SpinaModelPath=SpinaModel)
 
 # ======================================
 # STEP 3: SEGMENTATION
@@ -190,7 +192,20 @@ if species:
 	species_df = pd.DataFrame(list(species.items()), columns=['image_name', 'species'])
 	Measurements = Measurements.merge(species_df, on='image_name', how='left')
 
-Measurements.to_csv(f"{OutputDir}/data.csv")
+## Merge the confidence data into the dataframe
+Confidence_wide = Confidence.pivot(index='image_name', columns='class', values='conf')
+Confidence_wide = Confidence_wide.reset_index()
+Confidence_wide.columns.name = None
+
+Measurement_readable = SaveData.format_df(Measurements)
+
+print(Measurement_readable.head())
+print(Confidence_wide.head())
+
+Measurement_confidence = SaveData.merge_confidence(Measurement_readable, Confidence_wide, key_col='image_name')
+
+
+Measurement_confidence.to_csv(f"{OutputDir}/data.csv")
 
 
 scaled_data = Measurements.apply(LengthMeasure.scale_values, axis=1).apply(pd.Series)

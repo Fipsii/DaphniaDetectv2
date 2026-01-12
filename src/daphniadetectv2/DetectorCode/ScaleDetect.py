@@ -101,51 +101,85 @@ def expand_edges_by_one_pixel(mask):
     
     return new_mask
 
-def find_scale_box_edges(image: np.ndarray, color_threshold=30, min_box_size=50	):
-    def is_black(pixel):
-        return np.all(pixel < color_threshold)
 
-    def find_edge(img, start, step):
-        h, w = img.shape[:2]
-        x, y = start
-        while 0 <= x + step[0] < w and 0 <= y + step[1] < h:
-            next_pixel = img[y + step[1], x + step[0]]
-            if not is_black(next_pixel):
-                break
-            x += step[0]
-            y += step[1]
-        return [x, y]
 
-    def scan_for_box(img):
-        # Scan from right to left with step 5, top to bottom for each column
-        for x in range(img.shape[1] - 5, 5, -5):
-            for y in range(img.shape[0]):
-                pixel = img[y, x][:3] if img.ndim == 3 else img[y, x]
-                if is_black(pixel):
-                    top_left = find_edge(img, [x, y], [-1, 0])
-                    top_right = find_edge(img, [x, y], [1, 0])
-                    bottom_right = find_edge(img, top_right, [0, 1])
-                    width = abs(top_right[0] - top_left[0])
-                    height = abs(bottom_right[1] - top_right[1])
-                    if width >= min_box_size and height >= min_box_size:
-                        return [top_left, bottom_right]
-        return [None, None]
-
-    box = scan_for_box(image)
-    if box != [None, None]:
-        return box
-
-    # Fallback: detect rectangles using edges
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    edges = cv2.Canny(gray, 10, 150)
-    rects = find_rectangles(edges, min_area=2000)
+# --- 1. Helper Function: The Walker (from your original code) ---
+def find_edge(img, start, step, color_threshold=30):
+    h, w = img.shape[:2]
+    x, y = start
     
+    # helper for checking blackness
+    def is_pixel_black(p):
+        if isinstance(p, (int, float, np.uint8)):
+            return p < color_threshold
+        return np.all(p < color_threshold)
 
-    if rects[0] is not None and len(rects) > 0:
-    	return rects[0][:2], rects[0][2:]
+    while 0 <= x + step[0] < w and 0 <= y + step[1] < h:
+        next_pixel = img[y + step[1], x + step[0]]
+        if not is_pixel_black(next_pixel):
+            break
+        x += step[0]
+        y += step[1]
+    return [x, y]
+
+# --- 2. Main Function: Your Optimized scan_for_box ---
+def scan_for_box(img, color_threshold=30, min_box_size=50, max_box_percent=0.25):
+    """
+    Scans for a black box with added checks to reject large or central objects.
+    max_box_percent: Max allowed area of the box relative to the full image (e.g., 0.25 = 25%).
+    """
+    h, w = img.shape[:2]
+    img_area = w * h
+
+    # 1. FAST LOOKUP & SORT (Same as before)
+    if img.ndim == 3:
+        is_black_mask = np.all(img < color_threshold, axis=-1)
+    else:
+        is_black_mask = img < color_threshold
+    ys, xs = np.nonzero(is_black_mask)
+    if len(xs) == 0: return [None, None]
+    sort_order = np.lexsort((ys, -xs))
+
+    # 2. CHECK CANDIDATES
+    for i in sort_order:
+        px, py = xs[i], ys[i]
+        if px % 5 != 0: continue
+
+        # --- Run the walker ---
+        top_left = find_edge(img, [px, py], [-1, 0], color_threshold)
+        top_right = find_edge(img, [px, py], [1, 0], color_threshold)
+        bottom_right = find_edge(img, top_right, [0, 1], color_threshold)
+
+        width = abs(top_right[0] - top_left[0])
+        height = abs(bottom_right[1] - top_right[1])
+        box_area = width * height
+
+        # --- NEW VALIDATION CHECKS ---
+
+        # A. Size Check: Must be within min and max limits
+        if width < min_box_size or height < min_box_size:
+            continue
+        if box_area > (img_area * max_box_percent):
+            # Reject boxes that are too huge (like the dark circle)
+            continue
+
+        # B. Location Check: Reject boxes near the center
+        box_center_x = top_left[0] + width // 2
+        box_center_y = top_left[1] + height // 2
+        
+        # Define the central 50% of the image
+        center_x_min, center_x_max = w * 0.25, w * 0.75
+        center_y_min, center_y_max = h * 0.25, h * 0.75
+        
+        if (center_x_min < box_center_x < center_x_max) and \
+           (center_y_min < box_center_y < center_y_max):
+             # Box is in the center, likely not a scale bar
+             continue
+             
+        # If all checks pass, this is a good box. Return it.
+        return [top_left, bottom_right]
 
     return [None, None]
-
 
 import cv2
 import numpy as np
@@ -281,10 +315,10 @@ def find_strictly_horizontal_line(edges, min_length_ratio=0.05, min_length_fixed
 
 
 def detect_lines(image):
-    top_left, bottom_right = find_scale_box_edges(image)
+    top_left, bottom_right = scan_for_box(image)
 
     if top_left is not None and bottom_right is not None and not all(abs(a - b) <= 20 for a, b in zip(top_left, bottom_right)):
-        print("Scale box detected. Finding scale")
+        #print("Scale box detected. Finding scale")
         top_left, bottom_right = shrink_box_to_uniform_border(image, top_left, bottom_right)
 
         x1, y1 = top_left
@@ -332,23 +366,17 @@ def detect_lines(image):
 #### If not search in the area above and below the detected line
 
 
-def Detect(box_crop):
-	results = []
-
-	for item in box_crop:
-		if item [0] is not None:
-			crop_reworked = scale_for_easyocr(item[0])
-			#plt.figure(figsize=(6, 6))
-			#plt.imshow(crop_reworked, cmap='gray')  # Use 'gray' if the image is grayscale
-			#plt.axis('off')
-			#plt.show()
-			reader = easyocr.Reader(['en'])
-			result = reader.readtext(crop_reworked, allowlist='0123456789.µuUmMnNIi')
-			results.append(result)
-		else:
-			results.append(None)
-
-	return results
+def Detect(box_crop, reader_instance):
+    results = []
+    for item in box_crop:
+        if item[0] is not None:
+            crop_reworked = scale_for_easyocr(item[0])
+            # Use the global reader_instance
+            result = reader_instance.readtext(crop_reworked, allowlist='0123456789.µuUmMnNIi')
+            results.append(result)
+        else:
+            results.append(None)
+    return results
 
 
 def crop_text_around_scale_bar(image, bar_coords):
@@ -376,7 +404,7 @@ def crop_text_around_scale_bar(image, bar_coords):
 	    # Crop expanded box
 	    crop = image[y_top:y_bottom, xmin:xmax]
     else:
-            crop = None
+	    crop = None
     return crop
 
 def scale_for_easyocr(crop):
@@ -394,15 +422,46 @@ def scale_for_easyocr(crop):
     return resized
 
 
-import cv2
-import os
+def improve_crop_for_ocr(crop):
+    """
+    1. Binarizes (Black/White only)
+    2. Inverts colors if needed (ensures Black text on White bg)
+    3. Upsamples (3x) and Sharpens
+    """
+    # 1. Ensure Grayscale
+    if len(crop.shape) == 3:
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = crop
 
+    binary = gray.copy()
+
+    # 3. Fix Inversion (We want Black Text on White Background)
+    # Count white pixels. If white is the minority (text), it means we have 
+    # White Text on Black Background -> Invert it.
+    num_white = cv2.countNonZero(binary)
+    if num_white < binary.size / 2:
+        binary = cv2.bitwise_not(binary)
+
+    # 4. Upsample (3x) and Sharpen
+    scale_factor = 3
+    upsampled = cv2.resize(binary, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_LANCZOS4)
+    
+    # Sharpening Kernel
+    kernel = np.array([[0, -1, 0], 
+                       [-1, 5, -1], 
+                       [0, -1, 0]])
+    sharpened = cv2.filter2D(upsampled, -1, kernel)
+    
+    return sharpened
+
+# --- MAIN FUNCTION ---
 def process_folder(List_of_paths):
-    import cv2
-    import numpy as np
-
     all_crops = []
     all_results = []
+    
+    # Initialize Reader ONCE here to save time
+    reader = easyocr.Reader(['en'])
 
     for path in List_of_paths:
         image = cv2.imread(path)
@@ -414,18 +473,16 @@ def process_folder(List_of_paths):
             continue
 
         crop = detect_lines(image)
+        
         if crop and all(part is not None for part in crop):
             try:
-                gray = safe_to_gray(crop[0])
-                equalized = cv2.equalizeHist(gray)
-
-                # Thresholding using median value
-                median_val = np.median(equalized)
-                thresholded = np.where(equalized < median_val, 0, 255).astype(np.uint8)
-
-                crop_data = (equalized, crop[1])
+                # --- APPLY IMPROVEMENT HERE ---
+                # This replaces the old equalize/threshold logic
+                processed_img = improve_crop_for_ocr(crop[0])
+                
+                crop_data = (processed_img, crop[1])
                 all_crops.append(crop_data)
-                all_results.append(None)  # Placeholder for detection result
+                all_results.append(None)  # Placeholder
             except Exception as e:
                 print(f"[ERROR] Processing failed for {path}: {e}")
                 all_crops.append((None, None))
@@ -436,8 +493,23 @@ def process_folder(List_of_paths):
 
     # Run detection on all valid crops
     valid_crops = [c for c in all_crops if c[0] is not None and c[1] is not None]
+
+    # --- VISUALIZE SHARPENED CROPS ---
+    #for i, crop_data in enumerate(valid_crops):
+        #image_pixels = crop_data[0]
+        
+        #plt.figure(figsize=(4, 2))
+        #plt.imshow(image_pixels, cmap='gray')
+        #plt.title(f"Valid Crop #{i+1} (Sharpened)")
+        #plt.axis('off')
+        #plt.show()
+    # ---------------------------------
+
     if valid_crops:
-        valid_results = Detect(valid_crops)
+        # Pass the global reader instance
+        # Ensure your Detect function does NOT re-scale the image, 
+        # as we already upsampled it in improve_crop_for_ocr!
+        valid_results = Detect(valid_crops, reader)
 
         result_idx = 0
         for i in range(len(all_results)):
@@ -446,8 +518,6 @@ def process_folder(List_of_paths):
                 result_idx += 1
    
     return all_results, all_crops
-
-
 
     
 def lengths(lines):
