@@ -29,7 +29,7 @@ Navigate to the project root directory.
 ```
 You can either let PDM automatically manage the virtual environment or link it to an existing one.
 
-Option A: Let PDM manage it (Automatic) This will create a virtual environment specifically for this project.
+Option A: manage with PDM. This will create a virtual environment specifically for this project.
 
 ```bash
 pdm sync
