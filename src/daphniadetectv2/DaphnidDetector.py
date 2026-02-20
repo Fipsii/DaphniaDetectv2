@@ -19,9 +19,9 @@ OutputDir: str = script_dir + "/Detector"
 
 # Paths to trained YOLO model weights
 Bbox: str = os.path.join(script_dir, "Model/detect/weights/best.pt")  # Model for bounding box detection
-Segment: str = os.path.join(script_dir, "Model/segment/weights/best.pt")  # Model for segmentation
+Segment: str = os.path.join(script_dir, "Model/segment/weights/NonObjectSeg.pt")  # Model for segmentation
 Classify: str = os.path.join(script_dir, "Model/classify/weights/best.pt")  # Model for classification
-SpinaModel: str = "/home/fipsi/Downloads/AllCol28/weights/best.pt"  # Model for classification
+SpinaModel: str = "/home/fipsi/DaphniaDetectv2/src/daphniadetectv2/Model/best_spine_dual_model_1.pth"  # Model for classification
 
 # Directory containing input images
 ImageDir: str = None
@@ -63,7 +63,8 @@ ImageDir = ImageDir +"/JPG"
 # - vis (bool): Whether to visualize detections
 # - NMS (bool): Whether to apply Non-Maximum Suppression (NMS)
 # - crop (bool): Whether to crop detected regions
-# - ModelPath (str): Path to the trained YOLO model for detection
+# - ModelPath (str): Path to the trained YOLO model for detection#
+# - refineTip (bool): EXPERIMENTAL Forces detection of a spina tip based on ROI below the spina base
 
 NMS_detect_Rezoom.DetectOrgans(ImageDir, OutputDir, vis=True, NMS=True, crop=True,refineTip = False,organs = ["Heart","Daphnia", "Eye", "Spina tip", "Spina base"], ModelPath=Bbox, SpinaModelPath=SpinaModel)
 
