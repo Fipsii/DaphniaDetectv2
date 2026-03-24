@@ -1,27 +1,24 @@
 import pandas as pd
 import os
 from PIL import Image
-import re
-import ast
-### Save Data if only Segmentation was performed ######
-# Define a mapping from class ID to organ name or number
+
 class_names = {
-                    0: "Head",
-                    1: "Eye",
-                    2: "Spina base",
-                    3: "Spina tip",
-                    4: "Body",
-                    5: "Heart",
-                    6: "Daphnia",
-                    7: "Brood cavity"
-                }
-  
+    0: "Body",
+    1: "Brood cavity",
+    2: "Daphnia",
+    3: "Eye",
+    4: "Head",
+    5: "Heart",
+    6: "Spina base",
+    7: "Spina tip",
+    8: "SpinaTipBase"
+}
 
 def read_yolo_file(file_path):
     with open(file_path, 'r') as f:
         lines = f.readlines()
 
-    row = {}
+    bboxes = {}
     for line in lines:
         parts = line.strip().split()
         if len(parts) != 5:
@@ -29,13 +26,15 @@ def read_yolo_file(file_path):
         class_id, x_center, y_center, width, height = parts
         class_id = int(float(class_id))
         organ_name = class_names.get(class_id, f'organ{class_id}')
-        row.update({
-            f'x_center_{organ_name}': float(x_center),
-            f'y_center_{organ_name}': float(y_center),
-            f'width_{organ_name}': float(width),
-            f'height_{organ_name}': float(height)
-        })
-    return row
+        
+        # Store coordinates in a nested dictionary instead of flat columns
+        bboxes[organ_name] = {
+            'x_center': float(x_center),
+            'y_center': float(y_center),
+            'width': float(width),
+            'height': float(height)
+        }
+    return {'bboxes': bboxes}
     
       
 def read_yolo_folder(folder_path, image_folder):
@@ -59,125 +58,82 @@ def read_yolo_folder(folder_path, image_folder):
                 file_data['image_width'] = None
                 file_data['image_height'] = None
 
-            file_data['filename'] = image_name
+            # Crucial: Use 'image_name' to match downstream functions
+            file_data['image_name'] = image_name
             all_data.append(file_data)
 
-    df = pd.DataFrame(all_data)
-
-    # Ensure all columns exist
-    all_organs = set(class_names.values())
-    full_columns = []
-    for organ in all_organs:
-        full_columns += [
-            f'x_center_{organ}', f'y_center_{organ}',
-            f'width_{organ}', f'height_{organ}'
-        ]
-    full_columns += ['filename', 'image_width', 'image_height']
-    for col in full_columns:
-        if col not in df.columns:
-            df[col] = None
-    df = df[sorted(df.columns)]
-
-    return df
+    return pd.DataFrame(all_data)
 
 
 def convert_yolo_to_pixel(df):
     df_pixel = df.copy()
 
-    for organ in class_names.values():
-        x_col = f'x_center_{organ}'
-        y_col = f'y_center_{organ}'
-        w_col = f'width_{organ}'
-        h_col = f'height_{organ}'
-
-        if x_col in df_pixel.columns:
-            df_pixel[f'pixel_x_center_{organ}'] = df_pixel[x_col] * df_pixel['image_width']
-        if y_col in df_pixel.columns:
-            df_pixel[f'pixel_y_center_{organ}'] = df_pixel[y_col] * df_pixel['image_height']
-        if w_col in df_pixel.columns:
-            df_pixel[f'pixel_width_{organ}'] = df_pixel[w_col] * df_pixel['image_width']
-        if h_col in df_pixel.columns:
-            df_pixel[f'pixel_height_{organ}'] = df_pixel[h_col] * df_pixel['image_height']
+    for idx, row in df_pixel.iterrows():
+        # Skip if bboxes aren't present or aren't a dict
+        if 'bboxes' not in row or not isinstance(row['bboxes'], dict):
+            continue
+            
+        img_w = row.get('image_width')
+        img_h = row.get('image_height')
+        
+        if pd.isna(img_w) or pd.isna(img_h):
+            continue
+            
+        updated_bboxes = {}
+        for organ, coords in row['bboxes'].items():
+            new_coords = coords.copy()
+            
+            # Calculate pixel centers and dimensions
+            new_coords['pixel_x_center'] = coords['x_center'] * img_w
+            new_coords['pixel_y_center'] = coords['y_center'] * img_h
+            new_coords['pixel_width'] = coords['width'] * img_w
+            new_coords['pixel_height'] = coords['height'] * img_h
+            
+            # Calculate min and max bounds
+            new_coords['x_min'] = int((coords['x_center'] - coords['width'] / 2) * img_w)
+            new_coords['y_min'] = int((coords['y_center'] - coords['height'] / 2) * img_h)
+            new_coords['x_max'] = int((coords['x_center'] + coords['width'] / 2) * img_w)
+            new_coords['y_max'] = int((coords['y_center'] + coords['height'] / 2) * img_h)
+            
+            updated_bboxes[organ] = new_coords
+            
+        df_pixel.at[idx, 'bboxes'] = updated_bboxes
 
     return df_pixel
-
-
-def clean_and_parse_bboxes(bbox_str):
-    """
-    Cleans numpy type indicators from the string and parses it into a dict.
-    """
-    if pd.isna(bbox_str):
-        return {}
     
-    # Remove 'np.int64(' and ')' 
-    # We use regex to be safe: matches "np.int64(" or "np.float64("
-    cleaned = re.sub(r'np\.(int|float)64\((.*?)\)', r'\2', str(bbox_str))
-    
-    try:
-        return ast.literal_eval(cleaned)
-    except (ValueError, SyntaxError):
-        return {}
-
-def process_row(row):
-    """
-    Extracts organ data from the 'bboxes' column for a single row.
-    """
-    bboxes_dict = clean_and_parse_bboxes(row['bboxes'])
-    result = {}
-    
-    # Iterate through keys like 'Body', 'Head', 'Eye', etc.
-    for organ, detection_list in bboxes_dict.items():
-        if detection_list:
-            # Take the first detection (usually the most confident/primary one)
-            result[organ] = detection_list[0]
-            
-    return pd.Series(result)
-
-
-def format_df(df):
-    """
-    Formats the data.csv df into a more readable format 
-    """
-    # 2. Extract organ data into new columns
-    organ_data = df.apply(process_row, axis=1)
-
-    # 3. Select only the lightweight metadata columns
-    metadata_cols = ['image_name', 'metric_length', 'scale[px]', 'distance_per_pixel', 'species']
-    # Use intersection to avoid errors if a column is missing
-    existing_meta_cols = [c for c in metadata_cols if c in df.columns]
-    metadata = df[existing_meta_cols]
-
-    # 4. Concatenate and Print
-    condensed_df = pd.concat([metadata, organ_data], axis=1)
-
-    return condensed_df
-
 import pandas as pd
-import ast
+import os
+from PIL import Image
+
+### Save Data if only Segmentation was performed ######
+# Define a mapping from class ID to organ name or number
+class_names = {
+                    0: "Body",
+                    1: "Brood cavity",
+                    2: "Daphnia",
+                    3: "Eye",
+                    4: "Head",
+                    5: "Heart",
+                    6: "Spina base",
+                    7: "Spina tip",
+                    8: "SpinaTipBase"
+                }
+  
 
 def merge_confidence(df_meas, df_conf, key_col='image_name'):
     """
     Merges confidence scores from df_conf into the dictionary columns of df_meas.
-    
-    Args:
-        df_meas (pd.DataFrame): DataFrame containing measurement dicts (or strings of dicts).
-        df_conf (pd.DataFrame): DataFrame containing confidence floats.
-        key_col (str): The common column name to join on (e.g., 'image_name').
-        
-    Returns:
-        pd.DataFrame: A new DataFrame with 'conf' added to the measurement dictionaries.
     """
     # 1. Create copies to avoid modifying the original dataframes
     meas = df_meas.copy()
     conf = df_conf.copy()
     
     # 2. Set the key column as index for proper alignment
-    # This ensures we match the correct row even if the sort order differs
     meas = meas.set_index(key_col, drop=False)
     conf = conf.set_index(key_col, drop=False)
     
     # 3. Align df_conf to match the exact row order and index of df_meas
-    # This discards rows in conf that aren't in meas, and adds NaNs if meas has rows conf doesn't
+    # Note: df_conf must have unique image_names for this to work safely.
     conf = conf.reindex(meas.index)
 
     # 4. Identify columns to process (intersection of columns, excluding the key)
@@ -185,11 +141,16 @@ def merge_confidence(df_meas, df_conf, key_col='image_name'):
 
     # 5. Helper function to update a single cell
     def update_single_cell(box_data, conf_value):
-        # If either data point is missing, return the original box data unchanged
-        if pd.isna(conf_value) or box_data is None or pd.isna(box_data):
+        # A. Check if confidence is missing (NaN)
+        if pd.isna(conf_value):
+            return box_data
+            
+        # B. Check if box_data is valid. 
+        # If it is None or a float (NaN), we cannot update it.
+        if box_data is None or (isinstance(box_data, float) and pd.isna(box_data)):
             return box_data
 
-        # If data is a string representation of a dict (common in CSVs), parse it
+        # C. Parse data if it is a string representation of a dict
         if isinstance(box_data, str):
             try:
                 d = ast.literal_eval(box_data)
@@ -200,17 +161,94 @@ def merge_confidence(df_meas, df_conf, key_col='image_name'):
         else:
             return box_data
 
-        # Insert the confidence value
+        # D. Insert the confidence value
         d['conf'] = conf_value
         return d
 
+    # --- THIS WAS MISSING IN YOUR SNIPPET ---
     # 6. Apply the logic to each shared column
     for col in organ_cols:
-        # We use zip because we have already forced the indices to align perfectly in step 3
         meas[col] = [
             update_single_cell(m, c) 
             for m, c in zip(meas[col], conf[col])
         ]
 
-    # 7. Clean up and return
+    # 7. Return the result
     return meas.reset_index(drop=True)
+    
+    
+    
+    
+    
+import pandas as pd
+import ast
+import re
+
+def flatten_and_merge_data(Measurements, Confidence):
+    def clean_and_parse_bboxes(bbox_str):
+        if pd.isna(bbox_str): 
+            return {}
+        cleaned = re.sub(r'np\.(int|float)64\((.*?)\)', r'\2', str(bbox_str))
+        try:
+            return ast.literal_eval(cleaned)
+        except (ValueError, SyntaxError):
+            return {}
+
+    def process_row(row):
+        bboxes_dict = clean_and_parse_bboxes(row.get('bboxes', None))
+        result = {}
+        for organ, detection in bboxes_dict.items():
+            
+            if isinstance(detection, list) and detection:
+                result[organ] = detection[0] 
+            elif isinstance(detection, dict):
+                result[organ] = detection
+        return pd.Series(result)
+
+    # 1. Expand bboxes into organ columns
+    organ_cols = Measurements.apply(process_row, axis=1)
+
+    # 2. Retain ALL original columns except the unparsed 'bboxes'
+    df_meta = Measurements.drop(columns=['bboxes']) if 'bboxes' in Measurements.columns else Measurements.copy()
+    df_condensed = pd.concat([df_meta, organ_cols], axis=1)
+
+    # 3. Pivot Confidence Data
+    conf_renames = {'Image': 'image_name', 'Class': 'organ', 'class': 'organ', 'Confidence': 'confidence', 'conf': 'confidence'}
+    df_conf = Confidence.rename(columns=conf_renames)
+    
+    df_conf_pivoted = df_conf.pivot(index='image_name', columns='organ', values='confidence')
+    df_conf_pivoted.columns = [f"{col}_confidence" for col in df_conf_pivoted.columns]
+    df_conf_pivoted = df_conf_pivoted.reset_index()
+
+    # 4. Merge
+    final_df = pd.merge(df_condensed, df_conf_pivoted, on='image_name', how='left')
+
+    # 5. Sort columns to keep organs and their confidence scores together
+    sorted_cols = list(df_meta.columns)
+    found_organs = list(organ_cols.columns)
+
+    for organ in found_organs:
+        if organ in final_df.columns:
+            sorted_cols.append(organ)
+        conf_col = f"{organ}_confidence"
+        if conf_col in final_df.columns:
+            sorted_cols.append(conf_col)
+
+    remaining_cols = [c for c in final_df.columns if c not in sorted_cols]
+    return final_df[sorted_cols + remaining_cols]
+
+
+    
+def export_to_nested_json(final_df, output_path):
+    # Set the target key as the DataFrame index
+    # We also delete the mask it saved in folder
+    if 'mask' in final_df.columns:
+        final_df = final_df.drop(columns=['mask', 'rotated_mask'])
+
+    # Set the target key as the DataFrame index
+    if 'image_name' in final_df.columns:
+        indexed_df = final_df.set_index('image_name')
+    else:
+        indexed_df = final_df
+        
+    indexed_df.to_json(output_path, orient='index', indent=4)

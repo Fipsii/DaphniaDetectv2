@@ -7,24 +7,29 @@ import cv2
 import numpy as np
 import glob
 import pandas as pd
+import torch
+import sahi
+from sahi import AutoDetectionModel
+from sahi.predict import get_sliced_prediction
+from PIL import Image
 
 def Images_list(path_to_images):
-  ## Takes path, creates list of image names and full paths for all
-  ## PNGS or JPGS in the folder
-  import os as os
-  PureNames = []
-  Image_names = []
-  for root, dirs, files in os.walk(path_to_images, topdown=False):
-    #print(dirs, files)
-    for name in files:
-      _, ext = os.path.splitext(name)
-      if ext.lower() in ['.jpg', '.jpeg', '.png'] and name != '.DS_Store':
-        #print(os.path.join(root, name))
-        Image_names.append(os.path.join(root, name))
-        PureNames.append(name)
-        #print(files)
-  return Image_names, PureNames
+    # Check if the input is already a list of paths
+    if isinstance(path_to_images, list):
+        image_list = path_to_images
+        image_names = [os.path.basename(p) for p in path_to_images]
+        return image_list, image_names
 
+    # Original logic for directory strings
+    image_list = []
+    image_names = []
+    for root, dirs, files in os.walk(path_to_images, topdown=False):
+        for name in files:
+            if name.lower().endswith((".png", ".jpg", ".jpeg")):
+                image_list.append(os.path.join(root, name))
+                image_names.append(name)
+    return image_list, image_names
+    
 def CropImagesFromYOLO(Original_Images, labels_folder, Crop_mode, Save_folder, class_mapping):
     """
     Crops images based on YOLO format annotations and saves them.
@@ -131,152 +136,189 @@ def CropImagesFromYOLO(Original_Images, labels_folder, Crop_mode, Save_folder, c
 
     return cropped_images
 
-def DetectOrgans(Images,OutputDir, vis=True, NMS=True, crop=False, refineTip=True, organs = ["Eye"],  ModelPath= None, SpinaModelPath = None,conf = 0.01, iou = 0.2):
+
+
+
+def DetectOrgans(Images, OutputDir, vis=True, NMS=True, refineTip=True, organs=["Daphnia", "Spina base"], ModelPath=None, SpinaModelPath=None, conf=0.01, iou=0.2, use_sahi=False, slice_size=1280, overlap=0.2):
     '''
-    Detect specified organs in a list of images using a YOLO model and save the detection results.
-
-    Parameters:
-        Images (list): A list of image file paths to be processed.
-        OutputDir (str): Directory to save the output files (e.g., annotated images, labels).
-        vis (bool, optional): If True, saves annotated images with bounding boxes. Defaults to True.
-        NMS (bool, optional): If True, applies Non-Maximum Suppression (NMS) to filter overlapping detections. Defaults to True.
-        crop (bool, optional): If True, crops detected organs and saves them separately. Defaults to False.
-        organs (list, optional): List of organ class names to filter and detect (e.g., ["Eye"]). Defaults to ["Eye"].
-        ModelPath (str, optional): Path to the trained YOLO model to use for inference. Defaults to "StandardPath".
-        conf (float, optional): Confidence threshold for detections. Defaults to 0.01.
-        iou (float, optional): IoU (Intersection over Union) threshold for NMS. Defaults to 1 (no suppression).
-        
-        Important: We manually employ additional NMS later in which we filter for one instance per object
-
-    Returns:
-        df (df): Dataframe with confidence values per organ and image.
-        Also saves:
-            - YOLO-formatted .txt files with annotations.
-            - (Optionally) annotated images and/or cropped organ images in OutputDir.
+    Detect specified organs with optional Sliced Aided Hyper Inference (SAHI).
+    Geometric filtering applied to Spina Tips (7) followed by NMS.
     '''
-
     obj_detect_start = time.time()
-
-    # Initialize YOLO model
-    model = YOLO(ModelPath)
-
-    # Run YOLO model
-    results = model(Images, stream=True, imgsz=1280, conf=conf, iou=iou, project=OutputDir, name="Detection", verbose=False)
-    obj_detect_end = time.time()
     
-    # Create storage folder:
-    os.makedirs(OutputDir + "/Detection/labels", exist_ok=True)
-
-    # List to store data for the DataFrame
+    os.makedirs(os.path.join(OutputDir, "Detection", "labels"), exist_ok=True)
     detection_data = []
 
-    for result in results:
-        boxes = result.boxes # Boxes object for bounding box outputs
-        classes = boxes.cls
-        conf_scores = boxes.conf # Renamed to avoid confusion with parameter 'conf'
-        boxes_xywhn = boxes.xywhn
-        
-        # Get image name
-        image_name = os.path.basename(result.path)
-        
-        if NMS == True:
-            # Reshape tensors
-            classes = classes.unsqueeze(1)  
-            conf_scores = conf_scores.unsqueeze(1)
-            
-            # Concatenate: [class, x, y, w, h, conf]
-            combined = torch.cat((classes, boxes_xywhn, conf_scores), dim=1) 
-            
-            final_rows = []
-            seen_classes = set()
-            
-            # Filter for highest confidence per class
-            for row in combined:
-                class_id = row[0].item()
-                if class_id not in seen_classes:
-                    final_rows.append(row)
-                    seen_classes.add(class_id)
-            
-            if final_rows:
-                final_tensor = torch.stack(final_rows)
-                
-                # --- DATA EXTRACTION FOR DATAFRAME ---
-                # Iterate before we strip the confidence column
-                for row in final_tensor:
-                    detection_data.append({
-                        "image_name": image_name,
-                        "class": result.names[int(row[0].item())],
-                        "conf": float(row[5].item())
-                    })
-                # -------------------------------------
+    # Format Images input to a list of paths for consistent iteration
+    if isinstance(Images, str) and os.path.isdir(Images):
+        image_paths = [os.path.join(Images, f) for f in os.listdir(Images) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+    elif isinstance(Images, str):
+        image_paths = [Images]
+    else:
+        image_paths = Images
 
-                # Now get rid of last column (conf) for textfile writing
-                final_tensor = final_tensor[:, :-1]
+    # Initialize Models
+    if use_sahi:
+
+        device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        sahi_model = AutoDetectionModel.from_pretrained(
+            model_type="yolov11",
+            model_path=ModelPath,
+            confidence_threshold=conf,
+            device=device
+        )
+        class_names = {int(k): v for k, v in sahi_model.category_mapping.items()}
+    else:
+        model = YOLO(ModelPath)
+        class_names = model.names
+
+    for img_path in image_paths:
+        image_name = os.path.basename(img_path)
+        combined = None
+
+        if use_sahi:
+            # SAHI Inference Pass
+            with Image.open(img_path) as img:
+                w_img, h_img = img.size
+                
+            result = get_sliced_prediction(
+                img_path,
+                sahi_model,
+                slice_height=slice_size,
+                slice_width=slice_size,
+                overlap_height_ratio=overlap,
+                overlap_width_ratio=overlap,
+                postprocess_type="NMM"
+            )
+
+
+            rows = []
+            for pred in result.object_prediction_list:
+                x_min, y_min, x_max, y_max = pred.bbox.to_xyxy()
+                x_c = ((x_min + x_max) / 2.0) / w_img
+                y_c = ((y_min + y_max) / 2.0) / h_img
+                w_norm = (x_max - x_min) / w_img
+                h_norm = (y_max - y_min) / h_img
+                rows.append([pred.category.id, x_c, y_c, w_norm, h_norm, pred.score.value])
+            
+            if rows:
+                combined = torch.tensor(rows, dtype=torch.float32)
             else:
                 final_tensor = torch.empty((0, 5))
-
+                
         else:
-            # No NMS: Save all detections
-            classes = classes.unsqueeze(1)
-            final_tensor = torch.cat((classes, boxes_xywhn), dim=1)
-            
-            # --- DATA EXTRACTION FOR DATAFRAME ---
-            # We need to zip the separate tensors here because final_tensor lacks confidence
-            for c, score in zip(classes, conf_scores):
-                detection_data.append({
-                    "image_name": image_name,
-                    "class": result.names[int(c.item())],
-                    "conf": float(score.item())
-                })
-            # -------------------------------------
+            # Standard YOLO Inference Pass
+            results = model(img_path, imgsz=1280, conf=conf, iou=iou, verbose=False)
+            result = results[0]
+            boxes = result.boxes
+            if boxes is None or len(boxes) == 0:
+                final_tensor = torch.empty((0, 5))
+            else:
+                classes = boxes.cls.unsqueeze(1)
+                conf_scores = boxes.conf.unsqueeze(1)
+                combined = torch.cat((classes, boxes.xywhn, conf_scores), dim=1)
 
-        label_saveloc = f"{OutputDir}/Detection/labels/{os.path.splitext(image_name)[0]}.txt"
-        
-        # Open a file to write the tensor
+        # Filtering Logic
+        if combined is not None and len(combined) > 0:
+            if NMS:
+                other_organs = combined[combined[:, 0] != 7]
+                final_rows = []
+                seen_classes = set()
+                
+                other_organs = other_organs[torch.argsort(other_organs[:, 5], descending=True)]
+                
+                for row in other_organs:
+                    cid = int(row[0].item())
+                    if cid not in seen_classes:
+                        final_rows.append(row)
+                        seen_classes.add(cid)
+                
+                tip_candidates = combined[combined[:, 0] == 7]
+                
+                eye_row = next((r for r in final_rows if r[0] == 3), None) 
+                base_row = next((r for r in final_rows if r[0] == 6), None) 
+                
+                valid_tips_list = []
+                if eye_row is not None and base_row is not None and tip_candidates.size(0) > 0:
+                    p_eye, p_base = eye_row[1:3], base_row[1:3]
+                    v_base_eye = p_eye - p_base
+                    
+                    for tip in tip_candidates:
+                        v_base_tip = tip[1:3] - p_base
+                        norm_prod = torch.norm(v_base_eye) * torch.norm(v_base_tip)
+                        
+                        if norm_prod > 1e-8:
+                            cos_theta = torch.dot(v_base_eye, v_base_tip) / norm_prod
+                            angle_rad = torch.acos(torch.clamp(cos_theta, -1.0, 1.0))
+                            if angle_rad >= 2.0: 
+                                valid_tips_list.append(tip)
+                else:
+                    valid_tips_list = [t for t in tip_candidates]
+
+                if valid_tips_list:
+                    valid_tips_tensor = torch.stack(valid_tips_list)
+                    best_idx = torch.argmax(valid_tips_tensor[:, 5])
+                    final_rows.append(valid_tips_tensor[best_idx])
+                   
+                for row in final_rows:
+                    detection_data.append({
+                        "Image": image_name,
+                        "Class": class_names[int(row[0].item())],
+                        "Confidence": float(row[5].item())
+                    })
+
+                final_tensor = torch.stack(final_rows)[:, :5] if final_rows else torch.empty((0, 5))
+
+            else:
+                final_tensor = combined[:, :5]
+                for row in combined:
+                    detection_data.append({
+                        "Image": image_name,
+                        "Class": class_names[int(row[0].item())],
+                        "Confidence": float(row[5].item())
+                    })
+
+        # Save to file
+        label_saveloc = os.path.join(OutputDir, "Detection", "labels", f"{os.path.splitext(image_name)[0]}.txt")
         with open(label_saveloc, "w") as f:
             for row in final_tensor:
                 f.write(" ".join(map(str, row.tolist())) + "\n")
     
-    # Update bounding boxes (Original logic)
+    # --- POST-PROCESSING STEPS ---
     labels_folder = os.path.join(OutputDir, "Detection", "labels")
-    for filename in os.listdir(labels_folder):
-        file_path = os.path.join(labels_folder, filename)
-        # assuming update_daphnid_bounding_boxes is defined elsewhere
-        # update_daphnid_bounding_boxes(file_path) 
-  
+
     if refineTip:
         print("\nDetection of missing spina tips with specialised model")
-        # assuming SpinaTipEnhance is defined elsewhere
-        SpinaTipEnhance(Images, labels_folder, SpinaModelPath)
+        SpinaTipEnhance(image_paths, labels_folder, SpinaModelPath)
+        
+    for filename in os.listdir(labels_folder):
+        file_path = os.path.join(labels_folder, filename)
+        update_daphnid_bounding_boxes(file_path)
 
-    if crop:
-        print("\nDetection finished. Cropping images now...")
-        # assuming CropImagesFromYOLO is defined elsewhere
-        CropImagesFromYOLO(
-            Images,
-            labels_folder=labels_folder,
-            Crop_mode=organs,
-            Save_folder=os.path.join(OutputDir, "Detection", "crops"),
-            class_mapping=result.names if 'result' in locals() else {}
-        )
+    print("\nDetection finished. Cropping images now...")
+    CropImagesFromYOLO(
+        image_paths,
+        labels_folder=labels_folder,
+        Crop_mode=organs, 
+        Save_folder=os.path.join(OutputDir, "Detection", "crops"),
+        class_mapping=class_names
+    )
         
     if vis:
         print("\nDrawing detection boxes...")
         DrawYOLOBoxes(
-            Original_Images=Images,
+            Original_Images=image_paths,
             labels_folder=labels_folder,
             Save_folder=os.path.join(OutputDir, "Detection", "visuals"),
-            class_mapping=result.names if 'result' in locals() else {}
+            class_mapping=class_names
         )
     
     print(f"\nAnnotations saved to: {OutputDir}")
-    print("Please review the results for any potential issues.\n")
-
-    # Create the DataFrame
     df = pd.DataFrame(detection_data)
 
     return OutputDir, df
-
+    
+    
 def update_daphnid_bounding_boxes(annotation_file):
     if not os.path.exists(annotation_file):
         print(f"Annotation file {annotation_file} does not exist.")
@@ -363,7 +405,8 @@ def DrawYOLOBoxes(Original_Images, labels_folder, Save_folder, class_mapping=Non
         'Head': (0, 191, 255),        # Deep Sky Blue
         'Heart': (255, 20, 147),      # Deep Pink
         'Spina base': (138, 43, 226), # Blue Violet
-        'Spina tip': (0, 206, 209)    # Dark Turquoise
+        'Spina tip': (0, 206, 209),   # Dark Turquoise
+        'SpinaTipBase': (255, 140, 0) # Dark Orange
     }
 
     crosshair_classes = ['Spina tip', 'Spina base', 'Eye']
@@ -442,360 +485,130 @@ def DrawYOLOBoxes(Original_Images, labels_folder, Save_folder, class_mapping=Non
 
 
 
-def resize_with_zoom(img, target_size):
+
+
+import os
+import cv2
+import numpy as np
+from ultralytics import YOLO
+
+def RedetectSpinaTipYOLO(image_path, model, spina_base, eyes, target_imgsz=1280):
+    """
+    Uses the exact Eye-Base rotation logic to crop a high-resolution ROI 
+    for YOLO redetection.
+    """
+    img = cv2.imread(image_path)
+    if img is None: return {'detections': []}
     h, w = img.shape[:2]
 
-    # Avoid empty image
-    if h == 0 or w == 0:
-        raise ValueError("Cannot resize empty image (height or width is zero).")
-
-    # Scale factor to make the largest dimension = target_size
-    scale = target_size / max(h, w)
-    new_w, new_h = int(w * scale), int(h * scale)
-
-    # Resize only
-    resized = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-
-    return resized, scale, 0, 0  # left/top = 0 since no padding
-
-
-def RedetectSpinaTip(image_path, model, spina_base, eyes, model_input_size=640):
-    """
-    Generate an ROI along the eye-spina base axis (non-axis-aligned), 
-    apply CLAHE, run YOLO, return only the highest-confidence detection,
-    and show the rotated ROI crop with axis and mapped detection box.
-    """
-    import cv2
-    import numpy as np
-    import matplotlib.pyplot as plt
-    from ultralytics import YOLO
-
-    # --- Load image ---
-    print(image_path)
-    img = cv2.imread(image_path)
-    h, w, _ = img.shape
-
-    # --- Spina base in pixels ---
+    # 1. Parse Geometry (same as your U-Net logic)
     x_center, y_center, width_frac = spina_base
     x_center_pix, y_center_pix = int(x_center * w), int(y_center * h)
-
-    # --- Average eye position in pixels ---
     eye_x_avg = np.mean([x for x, y in eyes]) * w
     eye_y_avg = np.mean([y for x, y in eyes]) * h
 
-    # --- Rotation matrix (align eye-base axis vertical) ---
+    # 2. Rotation: Align Eye-Base axis to Vertical
     dx, dy = eye_x_avg - x_center_pix, eye_y_avg - y_center_pix
     angle = np.degrees(np.arctan2(dy, dx))
+    
+    # We add 90 to make the Eye -> Base vector point "down" (positive Y)
     M_rot = cv2.getRotationMatrix2D((x_center_pix, y_center_pix), angle + 90, 1.0)
     rotated_img = cv2.warpAffine(img, M_rot, (w, h))
 
-    # --- Crop out fully black rows/cols from rotated image ---
-    mask = rotated_img.sum(axis=2) > 0
-    rows = np.where(mask.max(axis=1))[0]
-    cols = np.where(mask.max(axis=0))[0]
-    if len(rows) == 0 or len(cols) == 0:
-        raise ValueError("Rotated image is completely black!")
-
-    y_start_img, y_end_img = rows[0], rows[-1] + 1
-    x_start_img, x_end_img = cols[0], cols[-1] + 1
-    rotated_img = rotated_img[y_start_img:y_end_img, x_start_img:x_end_img]
-
-    # --- Update spina base and eye coordinates after crop ---
-    x_center_rot = x_center_pix - x_start_img
-    y_center_rot = y_center_pix - y_start_img
-
+    # 3. Handle Flip: Ensure Eye is 'above' the Base in the rotated frame
     eye_coords = np.array([[[eye_x_avg, eye_y_avg]]], dtype=np.float32)
     eye_rotated = cv2.transform(eye_coords, M_rot)[0][0]
-    eye_rotated[0] -= x_start_img
-    eye_rotated[1] -= y_start_img
-
-    # --- Flip if eye is below base (always keep eye "above") ---
+    
     did_flip = False
-    h_c, w_c, _ = rotated_img.shape
-    if eye_rotated[1] > y_center_rot:
+    # If eye is below base in rotated coordinates, flip vertically
+    if eye_rotated[1] > y_center_pix:
         rotated_img = cv2.flip(rotated_img, 0)
-        y_center_rot = h_c - y_center_rot
-        eye_rotated[1] = h_c - eye_rotated[1]
+        y_center_rot = h - y_center_pix
         did_flip = True
-
-    # --- Define ROI ---
-    half_width = int((width_frac*1.5) * w / 2)
-    roi_length = min(int(0.5 * h_c), h_c - int(y_center_rot)) 
-    
-    y_start = y_center_rot
-    y_end = min(h_c, y_start + roi_length)
-    
-    x_start = max(0, x_center_rot - half_width)
-    x_end   = min(w_c, x_center_rot + half_width)
-
- 
-    roi = rotated_img[y_start:y_end, x_start:x_end]
-    if roi.shape[0] == 0 or roi.shape[1] == 0:
-        raise ValueError("ROI out of bounds or zero-sized")
-
-    # Resize to model input size
-    roi_resized, scale, pad_x, pad_y = resize_with_zoom(roi, model_input_size)
-
-    roi_smooth = cv2.GaussianBlur(roi_resized, (7, 7), sigmaX=0.5, sigmaY=0.5)
-
-    # Apply CLAHE
-    lab = cv2.cvtColor(roi_smooth, cv2.COLOR_BGR2LAB)
-    l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(2, 2))
-    l = clahe.apply(l)
-    lab = cv2.merge([l, a, b])
-    roi_clahe = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
-    
-    plt.figure(figsize=(8,8))
-    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    plt.imshow(roi_clahe)
-    
-    # --- Show original image with axis and ROI ---
-    plt.figure(figsize=(8,8))
-    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    plt.imshow(img_rgb)
-    plt.plot([x_center_pix, eye_x_avg], [y_center_pix, eye_y_avg], 'b-', linewidth=2, label='Eye-Spina axis')
-
-    # ROI polygon in original image
-    corners = np.array([[x_start, y_start], [x_end, y_start],
-                        [x_end, y_end], [x_start, y_end]], dtype=np.float32)
-    if did_flip:
-        corners[:, 1] = (h_c - 1) - corners[:, 1]
-    corners_uncropped = corners + np.array([x_start_img, y_start_img], dtype=np.float32)
-    M_inv = cv2.invertAffineTransform(M_rot)
-    roi_corners_orig = cv2.transform(corners_uncropped[None, :, :], M_inv)[0]
-    plt.plot(np.r_[roi_corners_orig[:, 0], roi_corners_orig[0, 0]],
-             np.r_[roi_corners_orig[:, 1], roi_corners_orig[0, 1]],
-             'r-', linewidth=2, label='ROI')
-             
-    plt.legend(); plt.axis('off'); plt.show()
-    
-    roi_h, roi_w = roi_clahe.shape[:2]
-    width = roi_w               # size of square
-    half_width = width // 2  # stride
-
-    roi_clahe_segments = []
-    crop_coords = []
-    
-    roi_clahe = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
-    roi_rgb = cv2.cvtColor(roi_clahe, cv2.COLOR_BGR2RGB)
-    
-    for y in range(0, roi_h - width + 1, half_width):
-     for x in range(0, roi_w - width + 1, half_width):
-        crop = roi_rgb[y:y+width, x:x+width]
-
-        # Skip empty or too-small crops (safety check)
-        if crop.size == 0 or crop.shape[0] != width or crop.shape[1] != width:
-            continue
-
-        roi_clahe_segments.append(crop)
-        crop_coords.append((x, y, x+width, y+width))
-    
-    import matplotlib.pyplot as plt
-
-    # Number of crops
-    n_segments = len(roi_clahe_segments)
-
-    # Decide grid size (square-like layout)
-    cols = int(np.ceil(np.sqrt(n_segments)))
-    rows = int(np.ceil(n_segments / cols))
-
-    plt.figure(figsize=(20, 20))
-
-    for i, seg in enumerate(roi_clahe_segments):
-     plt.subplot(rows, cols, i+1)
-     plt.imshow(seg)
-     plt.title(f"Seg {i}")
-     plt.axis("off")
-
-    plt.tight_layout()
-    plt.show()
-
-    # --- Run YOLO ---
-    model = YOLO(model)  # load your model
-    all_results = []
-
-    for i, seg in enumerate(roi_clahe_segments):
-     results = model(seg, imgsz=model_input_size, conf=0.1, iou=0.2, save=True, verbose=False)
-     if len(results[0].boxes) > 0:  # if any detections
-        confs = results[0].boxes.conf.cpu().numpy()
-        best_conf = float(np.max(confs))
-        all_results.append((i, crop_coords[i], best_conf, results))
-
-    # --- Pick the crop with highest confidence ---
-    if all_results:
-     best_idx, best_coords, best_conf, best_results = max(all_results, key=lambda x: x[2])
-     print(f"Best crop: Seg {best_idx}, Conf={best_conf:.3f}, Coords={best_coords}")
-     best_results[0].show()  # show YOLO detection
     else:
-     print("No detections found in any crop.")
+        y_center_rot = y_center_pix
 
-    # --- After YOLO ---
-    best_det, best_conf = None, -1
-    for result in results:
-        for box, cls, conf in zip(result.boxes.xyxy, result.boxes.cls, result.boxes.conf):
-            if conf.item() > best_conf:
-                best_conf = conf.item()
-                best_det = (cls.item(), box, conf.item())
+    # 4. Define ROI (Crops 'downward' from the base)
+    half_width = int((width_frac * 2.0) * w / 2) # Wider margin for safety
+    roi_length = int(0.4 * h) # 40% of image height
+    
+    y_start = int(y_center_rot)
+    y_end = int(min(h, y_start + roi_length))
+    x_start = int(max(0, x_center_pix - half_width))
+    x_end = int(min(w, x_center_pix + half_width))
 
-    detections = []
-    if best_det is not None:
-        cls, box, conf = best_det
-        x1, y1, x2, y2 = [float(v.cpu().item()) if hasattr(v, 'cpu') else float(v) for v in box]
+    roi = rotated_img[y_start:y_end, x_start:x_end]
+    if roi.size == 0: return {'detections': []}
 
-        # Undo resize_with_zoom scaling & padding
-        x1 = (x1 - pad_x) / scale
-        x2 = (x2 - pad_x) / scale
-        y1 = (y1 - pad_y) / scale
-        y2 = (y2 - pad_y) / scale
-
-        # 4-corner box in ROI coords
-        box_pts = np.array([[x1, y1], [x2, y1], [x2, y2], [x1, y2]], dtype=np.float32)
-
-        # Shift into rotated image coords (account for ROI origin)
-        box_pts[:, 0] += x_start
-        box_pts[:, 1] += y_start
-
-        # Undo flip if applied
-        if did_flip:
-            box_pts[:, 1] = (h_c - 1) - box_pts[:, 1]
-
-        # Add crop offset (uncropped rotated space)
-        box_pts_uncropped = box_pts + np.array([x_start_img, y_start_img], dtype=np.float32)
-
-        # Back-transform with inverse rotation to original image coords
-        box_pts_orig = cv2.transform(box_pts_uncropped[None, :, :], M_inv)[0]
-        x_min, y_min = box_pts_orig.min(axis=0)
-        x_max, y_max = box_pts_orig.max(axis=0)
-        detections.append((cls, x_min, y_min, x_max, y_max, conf))
-
-    # --- Draw final detections ---
-    plt.figure(figsize=(8,8))
-    plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-
-    # Draw eye & spina base
-    plt.scatter([x_center_pix], [y_center_pix], c='blue', label='Spina base')
-    if eyes:
-        eye_xs, eye_ys = zip(*eyes)
-        plt.scatter([x for x, y in eyes], [y for x, y in eyes], c='yellow', label='Eyes')
-        plt.scatter([x * w for x in eye_xs], [y * h for y in eye_ys], c='green', label='Eyes')
-
-    # Draw detection box
-
-    for cls, x_min, y_min, x_max, y_max, conf in detections:
-     # Reconstruct polygon for this detection
-     box_pts_orig = np.array([[x_min, y_min],
-                             [x_max, y_min],
-                             [x_max, y_max],
-                             [x_min, y_max]], dtype=np.float32)
-     # Close the rectangle
-     box_closed = np.vstack([box_pts_orig, box_pts_orig[0]])
-     plt.plot(box_closed[:, 0], box_closed[:, 1], 'r-', linewidth=2, label='Detected Spina Tip')
-
-
-    plt.legend(); plt.axis('off'); plt.show()
-
-    roi_coords = (y_start, h, x_center_pix - half_width, x_center_pix + half_width)
-    return {'prep': 'clahe', 'roi_coords': roi_coords, 'detections': detections}
-
-
-
-
-
-def SaveExtraDetections(extra_detections, labels_file, roi_coords, img_shape):
-    """
-    Saves zoomed detections in YOLO format to append to original labels.
-    extra_detections: list of (cls_id, x1, y1, x2, y2) in full image coordinates
-    roi_coords: (y_start, y_end, x_start, x_end) of cropped ROI
-    img_shape: (height, width) of original image
-    """
-    h, w = img_shape[:2]
-    y_start, y_end, x_start, x_end = roi_coords
-   
-    with open(labels_file, "a") as f:
-        for det in extra_detections:
-            _, x1, y1, x2, y2, _ = det
-            # Convert tensors to float if needed
-            x1, y1, x2, y2 = [v.item() if isinstance(v, torch.Tensor) else v for v in (x1, y1, x2, y2)]
+    # 5. YOLO Inference on the oriented ROI
+    results = model(roi, imgsz=target_imgsz, conf=0.001, verbose=False)[0]
+    
+    extra_detections = []
+    for box in results.boxes:
+        if int(box.cls[0]) == 7: # Spina Tip
+            # Local ROI -> Rotated Image
+            rx1, ry1, rx2, ry2 = box.xyxy[0].cpu().numpy()
+            conf = float(box.conf[0])
             
-            # Normalize relative to original image
-            x_center = ((x1 + x2) / 2) / w
-            y_center = ((y1 + y2) / 2) / h
-            bbox_w = (x2 - x1) / w
-            bbox_h = (y2 - y1) / h
+            mid_x = (rx1 + rx2) / 2 + x_start
+            mid_y = (ry1 + ry2) / 2 + y_start
+            
+            # Undo Flip
+            if did_flip:
+                mid_y = h - mid_y
+            
+            # Undo Rotation (Map back to Original Image)
+            M_inv = cv2.invertAffineTransform(M_rot)
+            orig_pt = cv2.transform(np.array([[[mid_x, mid_y]]], dtype=np.float32), M_inv)[0][0]
+            
+            # Synthetic 2% box
+            bw, bh = 0.02 * w, 0.02 * h
+            extra_detections.append((7, orig_pt[0]-bw/2, orig_pt[1]-bh/2, orig_pt[0]+bw/2, orig_pt[1]+bh/2, conf))
 
-            f.write(f"7 {x_center} {y_center} {bbox_w} {bbox_h}\n")
+    # Return only the highest confidence tip
+    if extra_detections:
+        extra_detections = [max(extra_detections, key=lambda x: x[5])]
 
-
-
-
-
-def SpinaTipEnhance(image_path, label_file, model):
-    """
-    Detects Spina tip in images that have Spina base and Eyes but no Spina tip.
-    Updates the YOLO label file with extra detections.
-
-    Parameters:
-        image_path (str): Path to the image OR folder of images.
-        label_file (str): Path to the YOLO label file OR folder of label files.
-        model: Model used for re-detecting the Spina tip.
-
-    Returns:
-        None. Updates the label file(s) in-place.
-    """
-
-    # Case 1: If given a folder, loop through all images + labels
-    if os.path.isdir(image_path) and os.path.isdir(label_file):
-        valid_exts = (".jpg", ".jpeg", ".png")
-        images = [f for f in os.listdir(image_path) if f.lower().endswith(valid_exts)]
-        print(f"Found {len(images)} images in {image_path}")
-
-        for img_name in images:
-            img_path = os.path.join(image_path, img_name)
-            lbl_path = os.path.join(label_file, os.path.splitext(img_name)[0] + ".txt")
-
-            if not os.path.exists(lbl_path):
-                print(f" Skipping {img_name}, no label file found.")
-                continue
-
-            SpinaTipEnhance(img_path, lbl_path, model)  # recursive call
-
-        return  # stop after processing folder
-
-    # Case 2: Single image + label
-    with open(label_file, "r") as f:
-        labels_in_file = [line.strip().split() for line in f.readlines()]
-
-    # Convert strings to floats/ints
-    labels_in_file = [(int(l[0]), float(l[1]), float(l[2]), float(l[3]), float(l[4])) 
-                      for l in labels_in_file]
-
-    # Extract spina base, eyes, and check spina tip
-    spina_base = None
-    eyes = []
-    spina_tip_detected = False
-    for cls, x, y, w, h in labels_in_file:
-        if cls == 6:  # Spina base
-            spina_base = (x, y, w, h)
-        elif cls == 3:  # Eye
-            eyes.append((x, y))
-        elif cls == 7:  # Spina tip
-            spina_tip_detected = True
-
-    # Only run enhancement if base + eyes exist, but tip is missing
-    if spina_base and len(eyes) > 0 and not spina_tip_detected:
-        print(f"Running SpinaTipEnhance for {label_file}...")
+    return {'detections': extra_detections}
+    
+    
+    
+def SpinaTipEnhance(image_dir, label_dir, model_path):
+    model = YOLO(model_path)
+    valid_exts = (".jpg", ".jpeg", ".png")
+    
+    for img_name in [f for f in os.listdir(image_dir) if f.lower().endswith(valid_exts)]:
+        img_path = os.path.join(image_dir, img_name)
+        lbl_path = os.path.join(label_dir, os.path.splitext(img_name)[0] + ".txt")
         
-        small_detect = RedetectSpinaTip(image_path, model, spina_base[:3], eyes)
-        extra_detections = small_detect['detections']
-        roi_coords = small_detect['roi_coords']
+        if not os.path.exists(lbl_path): continue
 
-        # Get image shape
-        img_shape = cv2.imread(image_path).shape[:2]
+        # Load existing labels
+        with open(lbl_path, "r") as f:
+            lines = [line.strip().split() for line in f.readlines()]
+        
+        # Convert to float first to handle strings like '0.0', then cast to int
+        labels = [(int(float(l[0])), float(l[1]), float(l[2]), float(l[3]), float(l[4])) for l in lines]
+        
+        base = next(((l[1], l[2], l[3]) for l in labels if l[0] == 6), None)
+        eyes = [(l[1], l[2]) for l in labels if l[0] == 3]
+        has_tip = any(l[0] == 7 for l in labels)
 
-        # Save new detections into label file
-        SaveExtraDetections(extra_detections, label_file, roi_coords, img_shape)
-
-
-
+        if base and eyes and not has_tip:
+            print(f"Scanning ROI for missed tip: {img_name}")
+            res = RedetectSpinaTipYOLO(img_path, model, base, eyes)
+            
+            if res['detections']:
+                h, w = cv2.imread(img_path).shape[:2]
+                with open(lbl_path, "a") as f:
+                    for det in res['detections']:
+                        cls, x1, y1, x2, y2, _ = det
+                        # Convert back to YOLO normalized format
+                        cx, cy = ((x1+x2)/2)/w, ((y1+y2)/2)/h
+                        bw, bh = (x2-x1)/w, (y2-y1)/h
+                        f.write(f"{cls} {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}\n")
+                print(" -> Success: Tip detected in ROI and added.")
+                
+                
+                
 

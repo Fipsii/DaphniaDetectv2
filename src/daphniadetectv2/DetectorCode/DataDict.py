@@ -56,11 +56,8 @@ def process_image_folder(InputDir, OutputDir):
     :return: Dictionary with image filenames as keys and their pixel-based annotations.
     """
     image_dir = InputDir
-
-    
-    OutputDir = Path(OutputDir)
-    segmentation_dir = OutputDir / "Segmentation" / "labels"
-    detection_dir = OutputDir / "Detection" / "labels"
+    segmentation_dir = os.path.join(OutputDir, "Segmentation", "labels")
+    detection_dir = os.path.join(OutputDir, "Detection", "labels")
     
     results = {}
 
@@ -80,8 +77,6 @@ def process_image_folder(InputDir, OutputDir):
             image_shape = image.shape  # (height, width, channels)
 
             # Load YOLO annotations
-            # We work with the _Daphnia files for the segmentation
-
             segmentation_path = os.path.join(segmentation_dir, f"{image_name}.txt")
             detection_path = os.path.join(detection_dir, f"{image_name}.txt")
 		
@@ -135,7 +130,8 @@ def process_image_folder(InputDir, OutputDir):
                     4: "Head",
                     5: "Heart",
                     6: "Spina base",
-                    7: "Spina tip"
+                    7: "Spina tip",
+                    8: "SpinaTipBase"
                 }
                 class_name = class_names.get(class_id, "Unknown")
 
@@ -957,11 +953,12 @@ import matplotlib.pyplot as plt
 
 def progress_bar(iterations, total):
     length = 50  # Length of the progress bar
-    progress = int(length * iterations / total)
-    bar = '█' * progress + ' ' * (length - progress)
-    percentage = 100 * iterations / total
+    # Ensure we don't divide by zero if total is 0
+    progress = int(length * iterations / total) if total > 0 else 0
+    # Use '#' instead of '█' for universal compatibility
+    bar = '#' * progress + '-' * (length - progress)
+    percentage = 100 * (iterations / total) if total > 0 else 0
     print(f"\rCreating visualizations |{bar}| {percentage:.1f}% Complete", end="", flush=True)
-
 
 def visualize_and_save(data_dict, output_folder, scale_mode):
     """

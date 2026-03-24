@@ -3,186 +3,158 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 from pathlib import Path
-from PIL import Image
-import matplotlib.pyplot as plt
+from PIL import Image, ImageOps
 
-def Segment(ImageDir, OutputDir, ModelPath, Vis=True):
+def apply_gamma(image_np, gamma=0.5):
+    invGamma = 1.0 / gamma
+    table = np.array([((i / 255.0) ** invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+    return cv2.LUT(image_np, table)
+
+def adaptive_predict_4step(model, raw_img, imgsz=640):
+    # Base grayscale array
+    gray_np = np.array(ImageOps.grayscale(raw_img))
+    h, w = gray_np.shape
+    pad = int(max(h, w) * 0.1)
+
+    def apply_padding(img_array):
+        return cv2.copyMakeBorder(img_array, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=255)
+
+    # 1. Padded Standard
+    padded_base_np = apply_padding(gray_np)
+    padded_base_img = Image.fromarray(padded_base_np).convert("RGB")
+    res = model.predict(source=padded_base_img, conf=0.10, verbose=False, imgsz=imgsz)[0]
+    if res.masks is not None:
+        return res, "1_Padded_Standard", pad
+
+    # 2. Padded Gamma
+    # Assumes apply_gamma(arr, gamma) is defined in your scope
+    gamma_np = apply_gamma(gray_np, gamma=0.5) 
+    padded_gamma_np = apply_padding(gamma_np)
+    padded_gamma_img = Image.fromarray(padded_gamma_np).convert("RGB")
+    res = model.predict(source=padded_gamma_img, conf=0.10, verbose=False, imgsz=imgsz)[0]
+    if res.masks is not None:
+        return res, "2_Padded_Gamma", pad
+
+    # 3. Padded CLAHE
+    clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+    clahe_np = clahe.apply(gray_np)
+    padded_clahe_np = apply_padding(clahe_np)
+    padded_clahe_img = Image.fromarray(padded_clahe_np).convert("RGB")
+    res = model.predict(source=padded_clahe_img, conf=0.10, verbose=False, imgsz=imgsz)[0]
+    if res.masks is not None:
+        return res, "3_Padded_CLAHE", pad
+
+    # 4. Standard No Pad (Fallback)
+    base_img = Image.fromarray(gray_np).convert("RGB")
+    res = model.predict(source=base_img, conf=0.10, verbose=False, imgsz=imgsz)[0]
     
-    # Load the YOLOv11 segmentation model
-    model = YOLO(ModelPath) 
-    
-    # Run inference on all images first
-    results = model(ImageDir, imgsz=1280, save_txt = True,project=OutputDir, name="Segmentation", save = Vis, iou = 0.1, verbose=False)
-    # Process results generator
-    for result in results:
-        masks = result.masks  # Masks object for segmentation masks output
-        #print(masks)
-       
+    return res, "4_Standard_No_Pad", 0
 
 
-
-
-def Segment_Exp(CroppedDir, ImageDir, OutputDir,ModelPath, Vis=True):
-    """
-    Run segmentation on images using YOLOv11 (or another variant).
-    Saves the segmentation results to the OutputDir.
-    
-    :param ImageDir: Directory containing input images.
-    :param OutputDir: Directory to save results.
-    :param Vis: Boolean to save visualized outputs.
-    """
-
-    # Load the YOLOv11 segmentation model
+def Segment_Exp(ImageDir, OutputDir, ModelPath, Vis=True):
     model = YOLO(ModelPath)
-
-    # Run inference on all images first
-    results = model(CroppedDir, imgsz=1280, save_txt=True, project=OutputDir, 
-                    name="Segmentation", save=Vis, iou=0.1, verbose=False)
+    out_path = Path(OutputDir)
+    crop_dir = out_path / 'Detection' / 'crops' / 'Daphnia'
+    yolo_label_dir = out_path / 'Detection' / 'labels'
     
-    # Process results
-    for result in results:
-        if result.masks is not None:  # Check if masks exist in result
-            masks = result.masks.data  # Segmentation masks output
+    mask_output_dir = out_path / 'Segmentation' / 'mask'
+    label_output_dir = out_path / 'Segmentation' / 'labels'  
+    vis_output_dir = out_path / 'Segmentation' / 'vis'
+    
+    mask_output_dir.mkdir(parents=True, exist_ok=True)
+    label_output_dir.mkdir(parents=True, exist_ok=True)            
+    if Vis:
+        vis_output_dir.mkdir(parents=True, exist_ok=True)
 
-            # Extract the first mask
-            people_masks = masks[0]
+    if not crop_dir.exists() or not yolo_label_dir.exists():
+        print("Error: Required directories missing.")
+        return
+
+    valid_extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.tif')
+    crop_files = [f for f in os.listdir(crop_dir) if f.lower().endswith(valid_extensions)]
+
+    for crop_filename in crop_files:
+        try:
+            base_stem = crop_filename.rsplit('_Daphnia', 1)[0]
+            orig_filename = next((f for f in os.listdir(ImageDir) if f.startswith(base_stem) and f.lower().endswith(valid_extensions)), None)
             
-            # Convert mask to uint8 and move it to CPU
-            people_mask = (people_masks * 255).cpu().numpy().astype(np.uint8)
-          
-            # Create output directory path for the mask
-            mask_dir = Path(OutputDir) / 'Segmentation'/'mask'
-            mask_dir.mkdir(parents=True, exist_ok=True)  # Ensure mask directory exists
+            if not orig_filename: 
+                continue
+                
+            orig_path = os.path.join(ImageDir, orig_filename)
+            crop_path = os.path.join(crop_dir, crop_filename)
+            label_path = yolo_label_dir / f"{base_stem}.txt"
             
-            output_file = mask_dir / os.path.basename(result.path)
+            if not label_path.exists(): 
+                continue
+
+            orig_img = Image.open(orig_path)
+            raw_crop = Image.open(crop_path)
+            orig_w, orig_h = orig_img.size
+            crop_w, crop_h = raw_crop.size
             
-            # Save the mask as an image
-            cv2.imwrite(str(output_file), people_mask)
+            with open(label_path, 'r') as f:
+                lines = f.readlines()
             
-        else:
-            print("No mask for", result.path)
+            daphnia_line = next((line for line in lines if line.startswith('2 ')), None)
+            if not daphnia_line: 
+                continue
+                
+            _, x_c, y_c, w, h = map(float, daphnia_line.strip().split())
+            x_min = max(0, int((x_c - w / 2) * orig_w))
+            y_min = max(0, int((y_c - h / 2) * orig_h))
 
-    CropSegDir = Path(OutputDir) / 'Segmentation'/ 'labels'
-    BoxAnnoDir = Path(OutputDir) / 'Detection'/ 'labels'
-    CropImgDir = Path(OutputDir) / 'Detection'/ 'crops' / 'Daphnia'
-    AnnotationOutputDir = Path(OutputDir) / 'Segmentation'/ 'labels' 
-    OriginalDir = ImageDir
-    TranslateDaphniaCropToOriginal(CropSegDir,CropImgDir,BoxAnnoDir,OriginalDir,AnnotationOutputDir,2,False)
+            # Execute adaptive inference
+            result, method_used, pad = adaptive_predict_4step(model, raw_crop, imgsz=640)
+            
+            if result.masks is not None:
+                pred_h, pred_w = (crop_h + 2 * pad, crop_w + 2 * pad)
+
+                # 1. Process Pixel Mask
+                masks_data = result.masks.data.cpu().numpy()
+                raw_m = (masks_data[0] * 255).astype(np.uint8)
+                
+                if raw_m.shape != (pred_h, pred_w):
+                    raw_m = cv2.resize(raw_m, (pred_w, pred_h), interpolation=cv2.INTER_NEAREST)
+
+                crop_mask = raw_m[pad : pad + crop_h, pad : pad + crop_w] if pad > 0 else raw_m
+
+                full_mask = np.zeros((orig_h, orig_w), dtype=np.uint8)
+                h_end, w_end = min(orig_h, y_min + crop_h), min(orig_w, x_min + crop_w)
+                full_mask[y_min:h_end, x_min:w_end] = crop_mask[:h_end-y_min, :w_end-x_min]
+                cv2.imwrite(str(mask_output_dir / orig_filename), full_mask)
+
+                # 2. Process YOLO Labels
+                seg_label_path = label_output_dir / f"{base_stem}.txt"
+                with open(seg_label_path, 'w') as f_out:
+                    for j, seg in enumerate(result.masks.xyn):
+                        cls = int(result.boxes.cls[j].item())
+                        orig_seg = []
+                        for point in seg:
+                            abs_x = (point[0] * pred_w) - pad + x_min
+                            abs_y = (point[1] * pred_h) - pad + y_min
+                            orig_seg.append([abs_x / orig_w, abs_y / orig_h])
+                        
+                        coords = " ".join([f"{coord:.6f}" for coord in np.array(orig_seg).flatten()])
+                        f_out.write(f"{cls} {coords}\n")
+
+                if Vis:
+                    annotated_crop = result.plot()
+                    if pad > 0: 
+                        annotated_crop = annotated_crop[pad:pad+crop_h, pad:pad+crop_w]
+                    
+                    orig_cv2 = cv2.cvtColor(np.array(orig_img), cv2.COLOR_RGB2BGR)
+                    orig_cv2[y_min:h_end, x_min:w_end] = annotated_crop[:h_end-y_min, :w_end-x_min]
+                    
+                    color = (0, 255, 0)
+                    if "Gamma" in method_used: color = (0, 0, 255)
+                    elif "CLAHE" in method_used: color = (0, 165, 255)
+                    
+                    cv2.putText(orig_cv2, f"Mode: {method_used}", (10, 30), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+                    cv2.imwrite(str(vis_output_dir / f"pred_{orig_filename}"), orig_cv2)
+
+        except Exception as e:
+            print(f"Error processing {crop_filename}: {e}")
 
 
-def TranslateDaphniaCropToOriginal(CropSegDir, CropImgDir, CropAnnoDir, OriginalDir, OutputDir,
-                                   daphnia_class_id=2, visualize=False):
-    """
-    Translate Daphnia crop segmentation polygons back to original image coordinates
-    and save as .txt files. Correctly handles resized crops.
-
-    CropSegDir: directory containing segmentation txt files (base_name_Daphnia.txt)
-    CropAnnoDir: directory containing YOLO bounding box annotations of crops (base_name.txt)
-    CropImgDir: directory containing resized cropped images (base_name.jpg/png)
-    OriginalDir: directory containing original full-size images (base_name.jpg/png)
-    OutputDir: directory to save translated YOLO polygon txt files
-    daphnia_class_id: class id to use from crop annotations
-    visualize: if True, draw polygons on original image
-    """
-    os.makedirs(OutputDir, exist_ok=True)
-
-    for seg_file in os.listdir(CropSegDir):
-        if not seg_file.endswith('_Daphnia.txt'):
-            continue
-
-        base_name = seg_file.replace('_Daphnia.txt', '')
-
-        seg_path = os.path.join(CropSegDir, seg_file)
-        anno_path = os.path.join(CropAnnoDir, f"{base_name}.txt")
-
-        # --- Read Daphnia bounding box from crop annotation ---
-        cls_id = None
-        with open(anno_path, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                parts = line.split()
-                if int(float(parts[0])) == daphnia_class_id:
-                    cls_id, xc, yc, w, h = map(float, parts[:5])
-                    break
-
-        if cls_id is None:
-            print(f"Skipping {base_name}: no Daphnia annotation found.")
-            continue
-
-        # --- Load resized crop image ---
-        crop_file_name = f"{base_name}_Daphnia.jpg"  # or .png depending on your files
-        crop_path = os.path.join(CropImgDir, crop_file_name)
-        if not os.path.exists(crop_path):
-            print(f"Skipping {base_name}: crop image not found.")
-            continue
-        crop_img = Image.open(crop_path)
-        crop_w_resized, crop_h_resized = crop_img.size  # resized crop dimensions
-
-        # --- Load original full image ---
-        orig_file_name = f"{base_name}.jpg"  # or .png
-        orig_path = os.path.join(OriginalDir, orig_file_name)
-
-        if not os.path.exists(orig_path):
-            print(f"Skipping {base_name}: original image not found.")
-            continue
-
-        orig_img = Image.open(orig_path).convert("RGB")
-        orig_w, orig_h = orig_img.size
-
-        # --- Convert YOLO bbox to original image pixels ---
-        x_min = (xc - w/2) * orig_w
-        y_min = (yc - h/2) * orig_h
-        bbox_w = w * orig_w
-        bbox_h = h * orig_h
-
-        # --- Read segmentation polygons ---
-        with open(seg_path, 'r') as f:
-            seg_lines = f.readlines()
-
-        translated_lines = []
-        for line in seg_lines:
-            parts = list(map(float, line.strip().split()))
-            cls = int(parts[0])
-            polygon = parts[1:]  # normalized in resized crop [0..1]
-
-            # --- Rescale polygon from resized crop to original bbox ---
-            # 1. polygon normalized to resized crop -> scale to original crop size
-            x_scale = bbox_w / crop_w_resized
-            y_scale = bbox_h / crop_h_resized
-
-            scaled_polygon = []
-            for i in range(0, len(polygon), 2):
-                # x and y in original image pixels
-                x_orig_px = x_min + polygon[i] * crop_w_resized * x_scale
-                y_orig_px = y_min + polygon[i+1] * crop_h_resized * y_scale
-
-                # normalized to full image
-                x_orig_norm = x_orig_px / orig_w
-                y_orig_norm = y_orig_px / orig_h
-                scaled_polygon.extend([x_orig_norm, y_orig_norm])
-
-            # Save translated polygon line
-            translated_lines.append(f"{cls} " + " ".join(f"{p:.6f}" for p in scaled_polygon) + "\n")
-
-            # Visualization
-            if visualize:
-                from PIL import ImageDraw
-                draw = ImageDraw.Draw(orig_img)
-                poly_px = [(scaled_polygon[i]*orig_w, scaled_polygon[i+1]*orig_h)
-                           for i in range(0, len(scaled_polygon), 2)]
-                draw.polygon(poly_px, outline="red")
-
-        # --- Save translated annotations ---
-        out_file = os.path.join(OutputDir, f"{base_name}.txt")
-        with open(out_file, 'w') as f:
-            f.writelines(translated_lines)
-
-        # Visualization
-        if visualize:
-            plt.figure(figsize=(8,8))
-            plt.imshow(orig_img)
-            plt.title(f"Translated Daphnia Polygon: {base_name}")
-            plt.axis('off')
-            plt.show()
