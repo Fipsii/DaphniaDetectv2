@@ -69,7 +69,7 @@ def Refine_spine_base(img_dir, label_dir, seg_model_path):
     label_dir = Path(label_dir)
     
     seg_model = YOLO(seg_model_path)
-    img_files = list(img_dir.glob("*.jpg")) + list(img_dir.glob("*.png"))
+    img_files = list(img_dir.glob("*.png")) + list(img_dir.glob("*.png"))
     
     for img_path in img_files:
         yolo_path = label_dir / f"{img_path.stem}.txt"

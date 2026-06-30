@@ -25,7 +25,7 @@ def Images_list(path_to_images):
     image_names = []
     for root, dirs, files in os.walk(path_to_images, topdown=False):
         for name in files:
-            if name.lower().endswith((".png", ".jpg", ".jpeg")):
+            if name.lower().endswith((".png", ".png", ".png")):
                 image_list.append(os.path.join(root, name))
                 image_names.append(name)
     return image_list, image_names
@@ -124,7 +124,7 @@ def CropImagesFromYOLO(Original_Images, labels_folder, Crop_mode, Save_folder, c
                 class_folder = os.path.join(Save_folder, class_name)
                 os.makedirs(class_folder, exist_ok=True)
                 
-                save_path = os.path.join(class_folder, f"{os.path.splitext(os.path.basename(img_path))[0]}_{class_name}.jpg")
+                save_path = os.path.join(class_folder, f"{os.path.splitext(os.path.basename(img_path))[0]}_{class_name}.png")
 
                 cv2.imwrite(save_path, crop)
                 
@@ -151,7 +151,7 @@ def DetectOrgans(Images, OutputDir, vis=True, NMS=True, refineTip=True, organs=[
 
     # Format Images input to a list of paths for consistent iteration
     if isinstance(Images, str) and os.path.isdir(Images):
-        image_paths = [os.path.join(Images, f) for f in os.listdir(Images) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        image_paths = [os.path.join(Images, f) for f in os.listdir(Images) if f.lower().endswith(('.png', '.png', '.png'))]
     elif isinstance(Images, str):
         image_paths = [Images]
     else:
@@ -476,7 +476,7 @@ def DrawYOLOBoxes(Original_Images, labels_folder, Save_folder, class_mapping=Non
                             cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2, cv2.LINE_AA)
 
             # Save annotated image
-            save_path = os.path.join(Save_folder, f"{base_name}_boxed.jpg")
+            save_path = os.path.join(Save_folder, f"{base_name}_boxed.png")
             cv2.imwrite(save_path, img)
 
 
@@ -575,7 +575,7 @@ def RedetectSpinaTipYOLO(image_path, model, spina_base, eyes, target_imgsz=1280)
     
 def SpinaTipEnhance(image_dir, label_dir, model_path):
     model = YOLO(model_path)
-    valid_exts = (".jpg", ".jpeg", ".png")
+    valid_exts = (".png", ".png", ".png")
     
     for img_name in [f for f in os.listdir(image_dir) if f.lower().endswith(valid_exts)]:
         img_path = os.path.join(image_dir, img_name)

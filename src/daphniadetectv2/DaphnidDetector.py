@@ -4,12 +4,13 @@ import time
 import pandas as pd
 from contextlib import contextmanager
 from tqdm import tqdm
+from ultralytics import YOLO
 
 # Import required modules from the CollectedCode package
 from DetectorCode import (
      NMS_detect_Rezoom, SegmentYOLODeploy, YOLODeploy, 
-    DataDict, ScaleDetect, LengthMeasure, ConvertToJPG, SaveData, SpinaBaseRefine
-)
+    DataDict, ScaleDetect, LengthMeasure, ConvertToPNG, 
+    SaveData, SpinaBaseRefine)
 
 @contextmanager
 def suppress_stdout():
@@ -34,13 +35,26 @@ def main():
     
     script_dir = os.path.dirname(os.path.abspath(__file__))
     bbox_model = os.path.join(script_dir, "Model/detect/weights/best.pt")
-    segment_model = os.path.join(script_dir, "Model/segment/daphnia_body/weights/NonObjectSeg.pt")
+
+    bbox_model = r"C:\Users\hanss\Downloads\Detection0604.pt"
+    temp_model = YOLO(bbox_model)
+
+    # Identify and rename the specific class
+    for key, value in temp_model.names.items():
+        if value == "Daphnid":
+            temp_model.names[key] = "Daphnia"
+            break
+
+    # Overwrite the original file with updated metadata
+    temp_model.save(bbox_model)
+
+    segment_model = os.path.join(script_dir, "Model/segment/daphnia_body/weights/SegmentationNew.pt")
     classify_model = os.path.join(script_dir, "Model/classify/weights/best.pt")
     spina_model = os.path.join(script_dir, "Model/segment/spina_base/weights/SpinaBase.pt")
     classify_species_flag = True
 
+    image_dir = input("Enter the directory path for images: ")
     # 1. Resolve Directories
-    image_dir = input("Enter ImageDir path: ").strip()
     while not os.path.exists(image_dir):
         image_dir = input("Invalid. Enter ImageDir path: ").strip()
     image_dir = os.path.normpath(image_dir)
@@ -56,12 +70,12 @@ def main():
 
     TOTAL_STEPS = 8
 
-    # STEP 1: CONVERT TO JPG
-    log_step(1, TOTAL_STEPS, "Converting to JPG...")
-    jpg_dir = os.path.join(image_dir, "JPG")
+    # STEP 1: CONVERT TO PNG
+    log_step(1, TOTAL_STEPS, "Converting to PNG...")
+    png_dir = os.path.join(image_dir, "PNG")
     with suppress_stdout():
-        ConvertToJPG.convert_to_jpeg(image_dir, image_dir)
-    image_dir = jpg_dir
+        ConvertToPNG.convert_to_png(image_dir, image_dir)
+    image_dir = png_dir
     log_done()
 
     # STEP 2: DETECT ORGANS
@@ -75,9 +89,11 @@ def main():
             ModelPath=bbox_model, SpinaModelPath=bbox_model, use_sahi=False
             
         )
+    
     labels_dir = os.path.join(output_dir, "Detection", "labels")
     SpinaBaseRefine.Refine_spine_base(image_dir, labels_dir, spina_model)
     log_done()
+    
 
     # STEP 3: SEGMENTATION
     log_step(3, TOTAL_STEPS, "Segmenting Body...")
@@ -105,7 +121,7 @@ def main():
     with suppress_stdout():
         measurements_dict = DataDict.BodyWidthMeasure(image_dir, output_dir, Method=Method)
     print(f"[Method: {Method}]")
-    
+
     # STEP 6: GET SCALE VALUES
     log_step(6, TOTAL_STEPS, "Detecting Scales...")
     scale_detector_mode = 2

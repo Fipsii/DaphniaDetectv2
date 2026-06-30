@@ -8,7 +8,7 @@ def Classify_Species(Folder_With_Images, Classifier_Location):
     
     image_paths = [os.path.join(Folder_With_Images, f) 
                    for f in os.listdir(Folder_With_Images) 
-                   if f.lower().endswith(('.jpg', '.png'))]
+                   if f.lower().endswith(('.png', '.png'))]
 
     if not image_paths:
         return {}
@@ -33,7 +33,7 @@ def Classify_Species(Folder_With_Images, Classifier_Location):
         predicted_species = class_labels[top_idx] if top_conf >= 0.1 else "uncertain"
 
         filename = os.path.basename(image_path)
-        filename = re.sub(r'_Daphnia\.jpg$', '.jpg', filename)
+        filename = re.sub(r'_Daphnia\.png$', '.png', filename)
 
         # Store the species AND the full probability map
         results_data[filename] = {

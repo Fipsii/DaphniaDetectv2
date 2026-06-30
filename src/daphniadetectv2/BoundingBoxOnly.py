@@ -6,9 +6,10 @@ from contextlib import contextmanager
 from tqdm import tqdm
 
 from DetectorCode import (
-    NMS_detect_Rezoom, SegmentYOLODeploy, YOLODeploy, 
-    DataDict, ScaleDetect, LengthMeasure, ConvertToJPG, SaveData, SpinaBaseRefine
-)
+     NMS_detect_Rezoom, SegmentYOLODeploy, YOLODeploy, 
+    DataDict, ScaleDetect, LengthMeasure, ConvertToPNG, 
+    SaveData, SpinaBaseRefine)
+
 
 @contextmanager
 def suppress_stdout():
@@ -55,12 +56,12 @@ def main():
 
     TOTAL_STEPS = 3
 
-    # STEP 1: CONVERT TO JPG
-    log_step(1, TOTAL_STEPS, "Converting to JPG...")
-    jpg_dir = os.path.join(image_dir, "JPG")
+    # STEP 1: CONVERT TO PNG
+    log_step(1, TOTAL_STEPS, "Converting to PNG...")
+    png_dir = os.path.join(image_dir, "PNG")
     with suppress_stdout():
-        ConvertToJPG.convert_to_jpeg(image_dir, image_dir)
-    image_dir = jpg_dir
+        ConvertToPNG.convert_to_png(image_dir, image_dir)
+    image_dir = png_dir
     log_done()
 
     # STEP 2: DETECT ORGANS
@@ -69,7 +70,7 @@ def main():
         _, confidence_data = NMS_detect_Rezoom.DetectOrgans(
             image_dir, output_dir, 
             vis=True, NMS=True, refineTip=False,
-            organs=["Heart", "Daphnia", "Eye", "Spina tip", "Spina base"], 
+            organs=["Heart","Head", "Daphnia", "Eye", "Spina tip", "Spina base"], 
             ModelPath=bbox_model, SpinaModelPath=bbox_model, use_sahi=False
         )
     labels_dir = os.path.join(output_dir, "Detection", "labels")
@@ -81,7 +82,7 @@ def main():
     with suppress_stdout():
         BoundingBoxAnnotations = SaveData.read_yolo_folder(labels_dir, image_dir)
         BoundingBoxAnnotationsPixel = SaveData.convert_yolo_to_pixel(BoundingBoxAnnotations)
-        
+
     # Save as JSON
     # Save the flat pixel annotations as JSON
     output_json_path = os.path.join(output_dir, "data.json")

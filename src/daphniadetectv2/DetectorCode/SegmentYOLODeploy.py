@@ -70,13 +70,28 @@ def Segment_Exp(ImageDir, OutputDir, ModelPath, Vis=True):
         print("Error: Required directories missing.")
         return
 
-    valid_extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.tif')
+    valid_extensions = ('.png', '.png', '.png', '.bmp', '.tif')
     crop_files = [f for f in os.listdir(crop_dir) if f.lower().endswith(valid_extensions)]
 
     for crop_filename in crop_files:
         try:
+            # 1. More precise stem extraction
+            # Assuming format: filename_Daphnia.png
+            if "_Daphnia" not in crop_filename:
+                continue
+                
             base_stem = crop_filename.rsplit('_Daphnia', 1)[0]
-            orig_filename = next((f for f in os.listdir(ImageDir) if f.startswith(base_stem) and f.lower().endswith(valid_extensions)), None)
+            
+            # 2. Use exact filename match or a safer prefix match
+            # This ensures that "6-9" doesn't match "6-9 (1)"
+            # We look for the base_stem followed by an extension
+            orig_filename = next((f for f in os.listdir(ImageDir) 
+                                if os.path.splitext(f)[0] == base_stem 
+                                and f.lower().endswith(valid_extensions)), None)
+            
+            # If the above fails, you might need to handle the case where the
+            # original file has a different name than the crop stem.
+            # But based on your description, this exact match is the fix.
             
             if not orig_filename: 
                 continue

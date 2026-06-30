@@ -7,7 +7,7 @@ from ultralytics import YOLO
 # Define variables
 source_dir = Path(r"C:\Users\hanss\Desktop\Daphnia\YOLO_Classification_Dataset_Save\cucullata I")
 weights_path = r"C:\Users\hanss\weights.pt"
-valid_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
+valid_extensions = {".png", ".png", ".png", ".bmp", ".tif", ".tiff"}
 padding_px = 0  # Define padding in pixels
 
 # Aggregate and randomly sample 50 image paths

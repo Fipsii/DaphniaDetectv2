@@ -45,7 +45,7 @@ def read_yolo_folder(folder_path, image_folder):
             file_path = os.path.join(folder_path, filename)
             file_data = read_yolo_file(file_path)
 
-            image_name = filename.replace('.txt', '.jpg')
+            image_name = filename.replace('.txt', '.png')
             image_path = os.path.join(image_folder, image_name)
 
             # Try to open image and get its dimensions

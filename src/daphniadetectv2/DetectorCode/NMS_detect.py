@@ -9,7 +9,7 @@ import glob
 
 def Images_list(path_to_images):
   ## Takes path, creates list of image names and full paths for all
-  ## PNGS or JPGS in the folder
+  ## PNGS or pngS in the folder
   import os as os
   PureNames = []
   Image_names = []
@@ -17,7 +17,7 @@ def Images_list(path_to_images):
     #print(dirs, files)
     for name in files:
       _, ext = os.path.splitext(name)
-      if ext.lower() in ['.jpg', '.jpeg', '.png'] and name != '.DS_Store':
+      if ext.lower() in ['.png', '.png', '.png'] and name != '.DS_Store':
         #print(os.path.join(root, name))
         Image_names.append(os.path.join(root, name))
         PureNames.append(name)
@@ -118,7 +118,7 @@ def CropImagesFromYOLO(Original_Images, labels_folder, Crop_mode, Save_folder, c
                 class_folder = os.path.join(Save_folder, class_name)
                 os.makedirs(class_folder, exist_ok=True)
                 
-                save_path = os.path.join(class_folder, f"{os.path.splitext(os.path.basename(img_path))[0]}_{class_name}.jpg")
+                save_path = os.path.join(class_folder, f"{os.path.splitext(os.path.basename(img_path))[0]}_{class_name}.png")
 
                 cv2.imwrite(save_path, crop)
                 
@@ -400,7 +400,7 @@ def DrawYOLOBoxes(Original_Images, labels_folder, Save_folder, class_mapping=Non
                             cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2, cv2.LINE_AA)
 
             # Save annotated image
-            save_path = os.path.join(Save_folder, f"{base_name}_boxed.jpg")
+            save_path = os.path.join(Save_folder, f"{base_name}_boxed.png")
             cv2.imwrite(save_path, img)
 
 

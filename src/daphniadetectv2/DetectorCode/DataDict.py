@@ -63,7 +63,7 @@ def process_image_folder(InputDir, OutputDir):
 
     for image_file in os.listdir(image_dir):
 
-        if image_file.endswith((".jpg",".jpeg", ".png")):
+        if image_file.endswith((".png",".png", ".png")):
          
             image_name = os.path.splitext(image_file)[0]
             image_path = os.path.join(image_dir, image_file)
